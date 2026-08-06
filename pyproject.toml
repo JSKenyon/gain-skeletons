@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gain-skeletons"
+version = "0.1.0"
+description = "Mock xarray/zarr dataset scaffolds for radio interferometric gain solutions"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "xarray",
+    "zarr>=3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+notebook = [
+    "ipykernel",
+    "jupyter",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gain_skeletons"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
