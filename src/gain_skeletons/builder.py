@@ -420,3 +420,105 @@ def make_gain_xds(
         xds[PARAMETER_UNITS_COORD].attrs["long_name"] = "Parameter units"
 
     return xds
+
+
+def make_split_gain_xds(
+    spec: CalSpec | str,
+    *,
+    n_direction: int | None = None,
+    n_time: int | None = None,
+    n_antenna: int | None = None,
+    n_frequency: int | None = None,
+    receptor_labels: Sequence[str] = ("X", "Y"),
+    coord_kwargs: Mapping[str, Mapping[str, Any]] | None = None,
+    seed: int | None = 0,
+    flag_fraction: float = DEFAULT_FLAG_FRACTION,
+    amplitude_jitter: float = DEFAULT_AMPLITUDE_JITTER,
+) -> dict[str, xr.Dataset]:
+    """Build one calibration dataset per parameter.
+
+    This is the layout the source deck describes: each quantity lives in its own
+    data array so that units can be a scalar attribute, and each keeps only the
+    axes it is actually defined over. Nothing is broadcast, and no parameter is
+    padded out over an axis it does not need.
+
+    The cost is fragmentation. A calibration type whose quantities come from a
+    single solve is spread over several datasets, each with its own flag.
+
+    For a calibration type with one parameter, which is nine of the ten
+    registered types, this returns a single dataset identical to the one
+    :func:`make_gain_xds` produces.
+
+    Args:
+        spec: A CalSpec, or the name of a registered calibration type.
+        n_direction: Override the direction extent.
+        n_time: Override the time extent.
+        n_antenna: Override the antenna extent.
+        n_frequency: Override the frequency extent.
+        receptor_labels: Receptor labels, for parameters with a receptor axis.
+        coord_kwargs: Axis name to extra keyword arguments for that axis's
+            coordinate factory.
+        seed: Seed for the random generator, for reproducibility.
+        flag_fraction: Probability that any given solution is flagged.
+        amplitude_jitter: Fractional spread of complex amplitude about unity.
+
+    Returns:
+        Parameter name to dataset. Each dataset holds one array of that name
+        and a boolean FLAG.
+
+    Raises:
+        ValueError: If a size or coord_kwargs entry names an axis the type
+            lacks, or if flag_fraction is out of range.
+        KeyError: If spec is a name that is not registered.
+    """
+    spec = _resolve_spec(spec)
+    _check_flag_fraction(flag_fraction)
+
+    sizes = _resolve_sizes(
+        spec,
+        {
+            "n_direction": n_direction,
+            "n_time": n_time,
+            "n_antenna": n_antenna,
+            "n_frequency": n_frequency,
+        },
+    )
+    # Validate coord_kwargs against the whole calibration type, not each
+    # parameter, so that configuring an axis only some parameters use is not an
+    # error.
+    _build_coords(spec, spec.axes, sizes, spec.all_labels, receptor_labels, coord_kwargs or {})
+
+    attrs = _dataset_attrs(spec)
+    rng = np.random.default_rng(seed)
+    datasets: dict[str, xr.Dataset] = {}
+
+    for param in spec.parameters:
+        axes = param.axes
+        coords = _build_coords(
+            spec,
+            axes,
+            sizes,
+            param.resolved_labels,
+            receptor_labels,
+            {axis: kwargs for axis, kwargs in (coord_kwargs or {}).items() if axis in axes},
+        )
+        shape = tuple(coords[axis].size for axis in axes)
+        values = _generate_values(param, shape, rng, amplitude_jitter)
+
+        flag_dims = _flag_dims(axes)
+        flag_shape = tuple(coords[axis].size for axis in flag_dims)
+
+        datasets[param.name] = xr.Dataset(
+            data_vars={
+                param.name: (axes, values, {"units": param.units}),
+                FLAG_NAME: (
+                    flag_dims,
+                    _generate_flags(flag_shape, rng, flag_fraction),
+                    {"long_name": "Solution flag"},
+                ),
+            },
+            coords=coords,
+            attrs=dict(attrs),
+        )
+
+    return datasets

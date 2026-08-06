@@ -1,0 +1,152 @@
+"""Tests for the split dataset builder, and for equivalence between layouts."""
+
+import numpy as np
+import pytest
+import xarray as xr
+
+from gain_skeletons.builder import make_gain_xds, make_split_gain_xds
+from gain_skeletons.registry import get_spec, list_cal_types
+from gain_skeletons.spec import CalSpec, ParamSpec
+
+SINGLE_PARAMETER_KEYS = [key for key in list_cal_types() if len(get_spec(key).parameters) == 1]
+
+
+def test_returns_a_mapping_keyed_by_parameter_name():
+    datasets = make_split_gain_xds("fringefit")
+    assert set(datasets) == {"PHASE", "DELAY", "RATE", "DISP_DELAY"}
+    assert all(isinstance(xds, xr.Dataset) for xds in datasets.values())
+
+
+def test_single_parameter_type_yields_one_dataset():
+    datasets = make_split_gain_xds("G")
+    assert set(datasets) == {"GAIN"}
+
+
+def test_each_dataset_holds_one_parameter_and_a_flag():
+    for name, xds in make_split_gain_xds("fringefit").items():
+        assert set(xds.data_vars) == {name, "FLAG"}
+
+
+# Splitting exists so that units can be a scalar attribute on every array.
+def test_every_array_carries_scalar_units():
+    datasets = make_split_gain_xds("fringefit")
+    assert datasets["PHASE"].PHASE.attrs["units"] == "deg"
+    assert datasets["DELAY"].DELAY.attrs["units"] == "s"
+    assert datasets["RATE"].RATE.attrs["units"] == "s/s"
+    assert datasets["DISP_DELAY"].DISP_DELAY.attrs["units"] == "s"
+
+
+def test_no_dataset_needs_a_parameter_units_coord():
+    for xds in make_split_gain_xds("fringefit").values():
+        assert "parameter_units" not in xds.coords
+
+
+# The deck gives each fringefit quantity nPar=1, so the parameter axis is
+# present but length one.
+def test_each_fringefit_dataset_has_a_length_one_parameter_axis():
+    for name, xds in make_split_gain_xds("fringefit").items():
+        assert xds.sizes["parameter_label"] == 1
+        assert list(xds.parameter_label.values) == [name]
+
+
+# Splitting keeps each quantity's exact axes, so the unpolarised dispersive
+# delay is not padded out over receptors.
+def test_unpolarised_quantity_keeps_no_receptor_axis():
+    datasets = make_split_gain_xds("fringefit")
+    assert "receptor_label" not in datasets["DISP_DELAY"].dims
+    assert "receptor_label" in datasets["PHASE"].dims
+
+
+def test_flag_drops_the_parameter_axis_in_every_dataset():
+    for name, xds in make_split_gain_xds("fringefit").items():
+        expected = tuple(dim for dim in xds[name].dims if dim != "parameter_label")
+        assert xds.FLAG.dims == expected
+        assert xds.FLAG.dtype == np.bool_
+
+
+def test_each_quantity_gets_its_own_flag():
+    datasets = make_split_gain_xds("fringefit", flag_fraction=0.5, seed=3)
+    phase_flags = datasets["PHASE"].FLAG.values
+    rate_flags = datasets["RATE"].FLAG.values
+    assert not np.array_equal(phase_flags, rate_flags)
+
+
+def test_dataset_attributes_are_carried_through():
+    xds = make_split_gain_xds("dd_gain")["GAIN"]
+    assert xds.attrs["cal_type"] == "dd_gain"
+    assert xds.attrs["direction_dependent"] is True
+
+
+def test_size_overrides_are_honoured():
+    xds = make_split_gain_xds("B", n_time=2, n_antenna=3, n_frequency=16)["GAIN"]
+    assert xds.GAIN.shape == (2, 3, 16, 2)
+
+
+def test_size_for_absent_axis_is_rejected():
+    with pytest.raises(ValueError, match="has no 'frequency' axis"):
+        make_split_gain_xds("antpos", n_frequency=64)
+
+
+def test_invalid_flag_fraction_is_rejected():
+    with pytest.raises(ValueError, match="flag_fraction"):
+        make_split_gain_xds("G", flag_fraction=2.0)
+
+
+# A calibration type mixing dtypes cannot consolidate, but splitting it is
+# perfectly well defined.
+def test_mixed_dtype_spec_splits_successfully():
+    spec = CalSpec(
+        name="mixed",
+        parameters=(
+            ParamSpec("A", "rel", ("time", "parameter_label"), "complex64"),
+            ParamSpec("B", "m", ("time", "parameter_label"), "float64"),
+        ),
+        default_sizes={"time": 4},
+        consolidated_name="PARAMETER",
+    )
+    datasets = make_split_gain_xds(spec)
+    assert datasets["A"].A.dtype == np.complex64
+    assert datasets["B"].B.dtype == np.float64
+
+
+# Consolidating a multi-parameter spec with no parameter axis is rejected,
+# because there would be nowhere to put the parameters. Splitting it is well
+# defined: each parameter gets its own dataset.
+def test_multi_parameter_spec_without_parameter_axis_splits_successfully():
+    spec = CalSpec(
+        name="no_parameter_axis",
+        parameters=(
+            ParamSpec("A", "m", ("time", "antenna_name"), "float64"),
+            ParamSpec("B", "m", ("time", "antenna_name"), "float64"),
+        ),
+        default_sizes={"time": 4, "antenna_name": 8},
+        consolidated_name="PARAMETER",
+    )
+    with pytest.raises(ValueError, match="no parameter_label axis"):
+        make_gain_xds(spec)
+
+    datasets = make_split_gain_xds(spec)
+    assert set(datasets) == {"A", "B"}
+    assert datasets["A"].A.dims == ("time", "antenna_name")
+    assert "parameter_label" not in datasets["A"].dims
+
+
+# Nine of the ten registry entries declare a single parameter. For those the
+# layout choice is a distinction without a difference, and this pins that
+# claim so neither builder can drift from the other.
+@pytest.mark.parametrize("key", SINGLE_PARAMETER_KEYS)
+def test_layouts_agree_for_single_parameter_types(key):
+    consolidated = make_gain_xds(key, seed=11)
+    split = make_split_gain_xds(key, seed=11)
+    assert len(split) == 1
+    (only,) = split.values()
+    assert consolidated.identical(only)
+
+
+def test_fringefit_is_the_only_type_where_layouts_differ():
+    differing = []
+    for key in list_cal_types():
+        split = make_split_gain_xds(key, seed=11)
+        if len(split) > 1 or not make_gain_xds(key, seed=11).identical(next(iter(split.values()))):
+            differing.append(key)
+    assert differing == ["fringefit"]
