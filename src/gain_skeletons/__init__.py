@@ -4,6 +4,25 @@ This package is a demonstrator. Every array value it produces is randomly
 generated; nothing here computes or applies calibration.
 """
 
+from gain_skeletons.axes import (
+    CANONICAL_AXES,
+    antenna_name_coord,
+    direction_coord,
+    frequency_coord,
+    parameter_label_coord,
+    receptor_label_coord,
+    time_coord,
+)
+
 __version__ = "0.1.0"
 
-__all__ = ["__version__"]
+__all__ = [
+    "CANONICAL_AXES",
+    "__version__",
+    "antenna_name_coord",
+    "direction_coord",
+    "frequency_coord",
+    "parameter_label_coord",
+    "receptor_label_coord",
+    "time_coord",
+]
