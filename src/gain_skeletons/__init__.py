@@ -13,6 +13,7 @@ from gain_skeletons.axes import (
     receptor_label_coord,
     time_coord,
 )
+from gain_skeletons.builder import make_gain_xds
 from gain_skeletons.registry import REGISTRY, get_spec, list_cal_types
 from gain_skeletons.spec import CalSpec, ParamSpec
 
@@ -29,6 +30,7 @@ __all__ = [
     "frequency_coord",
     "get_spec",
     "list_cal_types",
+    "make_gain_xds",
     "parameter_label_coord",
     "receptor_label_coord",
     "time_coord",
