@@ -13,11 +13,14 @@ from gain_skeletons.axes import (
     receptor_label_coord,
     time_coord,
 )
+from gain_skeletons.spec import CalSpec, ParamSpec
 
 __version__ = "0.1.0"
 
 __all__ = [
     "CANONICAL_AXES",
+    "CalSpec",
+    "ParamSpec",
     "__version__",
     "antenna_name_coord",
     "direction_coord",
