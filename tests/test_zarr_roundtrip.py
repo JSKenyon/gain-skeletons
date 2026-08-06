@@ -3,8 +3,9 @@
 Reading and writing is plain xarray: xds.to_zarr(path) and
 xr.open_dataset(path, engine="zarr"). The package deliberately wraps neither.
 
-consolidated=False throughout: zarr format 3 does not specify consolidated
-metadata and xarray warns if asked to write it.
+consolidated=False on both write and read: zarr format 3 does not specify
+consolidated metadata, so xarray warns if asked to write it, and warns again if
+asked to look for metadata that was never written.
 """
 
 import numpy as np
@@ -26,7 +27,7 @@ def roundtrip(xds: xr.Dataset, path) -> xr.Dataset:
         The dataset as read back from disk.
     """
     xds.to_zarr(path, consolidated=False)
-    return xr.open_dataset(path, engine="zarr").load()
+    return xr.open_dataset(path, engine="zarr", consolidated=False).load()
 
 
 @pytest.mark.parametrize("key", list_cal_types())
