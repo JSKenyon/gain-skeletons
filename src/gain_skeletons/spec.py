@@ -19,6 +19,7 @@ them apart under a single mechanism:
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
 import numpy as np
 
@@ -172,6 +173,15 @@ class CalSpec:
             raise ValueError(
                 f"calibration type {self.name!r} is missing default size for {missing}"
             )
+
+        # frozen=True blocks rebinding the attribute but not mutating the mapping
+        # behind it, which would let a caller invalidate a spec after it had been
+        # validated.
+        object.__setattr__(
+            self,
+            "default_sizes",
+            MappingProxyType(dict(self.default_sizes)),
+        )
 
     @property
     def axes(self) -> tuple[str, ...]:

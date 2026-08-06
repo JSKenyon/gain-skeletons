@@ -210,3 +210,19 @@ def test_cal_spec_requires_default_size_for_every_sized_axis():
             parameters=(make_gain_param(axes=("time", "antenna_name")),),
             default_sizes={"time": 4},
         )
+
+
+def test_default_sizes_cannot_be_mutated_after_construction():
+    sizes = {"time": 4, "antenna_name": 8, "frequency": 1}
+    spec = CalSpec(name="G", parameters=(make_gain_param(),), default_sizes=sizes)
+    with pytest.raises(TypeError):
+        spec.default_sizes["frequency"] = 999
+    assert spec.default_sizes["frequency"] == 1
+
+
+# The snapshot must also be insulated from later edits to the caller's dict.
+def test_default_sizes_snapshot_is_independent_of_caller_dict():
+    sizes = {"time": 4, "antenna_name": 8, "frequency": 1}
+    spec = CalSpec(name="G", parameters=(make_gain_param(),), default_sizes=sizes)
+    sizes["frequency"] = 999
+    assert spec.default_sizes["frequency"] == 1
