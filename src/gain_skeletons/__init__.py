@@ -13,6 +13,7 @@ from gain_skeletons.axes import (
     receptor_label_coord,
     time_coord,
 )
+from gain_skeletons.registry import REGISTRY, get_spec, list_cal_types
 from gain_skeletons.spec import CalSpec, ParamSpec
 
 __version__ = "0.1.0"
@@ -21,10 +22,13 @@ __all__ = [
     "CANONICAL_AXES",
     "CalSpec",
     "ParamSpec",
+    "REGISTRY",
     "__version__",
     "antenna_name_coord",
     "direction_coord",
     "frequency_coord",
+    "get_spec",
+    "list_cal_types",
     "parameter_label_coord",
     "receptor_label_coord",
     "time_coord",
