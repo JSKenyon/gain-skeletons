@@ -162,8 +162,9 @@ the dataset — no length-one placeholder. The `nFreq=1` versus `nFreq=nCh` dist
 carried by `CalSpec.default_sizes` instead: `G` defaults `frequency=1`, `B` defaults
 `frequency=64`.
 
-A bare `nFreq` with neither `=1` nor braces (only `J` on slide 6) is read as
-channel-resolved and defaults to 64.
+A bare `nFreq` with neither `=1` nor braces (only `J` on slide 6) denotes an arbitrary,
+deliberately unspecified extent. `J` therefore defaults to `frequency=64`, matching `B`
+and `D`, but nothing about the type constrains it.
 
 ### `builder.py` — two layouts
 
