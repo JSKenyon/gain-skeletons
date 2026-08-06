@@ -79,12 +79,19 @@ its own.
 | `parameter_label_coord(labels)` | Parameter labels verbatim | no default |
 | `direction_coord(n)` | `arange(n)`, integer index | slide 8: "indexed directions" |
 
-Ranged factories are `linspace`-based with overridable endpoints, as required. `n=1` is
-valid and yields the range start, not its midpoint.
+The two ranged factories generate values differently, and only one is `linspace`-based.
+`frequency_coord` is `linspace(start, end, n)` with overridable endpoints. `time_coord` is
+`start + interval * arange(n)`: an overridable origin and an overridable step, not
+endpoints — there is no way to pin where the range ends without knowing `n`.
+`direction_coord` takes no overrides at all; it is a plain `arange(n)`. Across all three,
+`n=1` is valid and yields the range start, not its midpoint.
 
 Coordinate attributes follow MSv4: `time` carries `type="time"`, `units="s"`,
-`scale="utc"`, `format="unix"`; `frequency` carries `type="spectral_coord"`,
-`units="Hz"`, `observer="topo"`. Label axes carry only `long_name`.
+`scale="utc"`, `format="unix"`, and `integration_time` (the `interval` argument);
+`frequency` carries `type="spectral_coord"`, `units="Hz"`, `observer="topo"`,
+`reference_frequency` (the first channel's value), and `channel_width` (the spacing
+between channels, or the full span for a single channel). Label axes carry only
+`long_name`.
 
 Defaults are chosen so output resembles real MeerKAT data. This is cosmetic but makes
 the notebook legible.
@@ -150,10 +157,13 @@ because each position along it denotes a specific named parameter, and the exten
 `object.__setattr__`. `frozen=True` stops a caller from doing `spec.default_sizes = ...`,
 but it does nothing to stop them mutating the dict they passed in after construction —
 without the snapshot, that mutation would silently invalidate an already-validated spec.
-One consequence is that `CalSpec` is not hashable: dataclass-generated `__hash__` would hash
-the field tuple, and a mapping is not hashable regardless of whether it is proxied. This is
-a deliberate YAGNI call rather than an oversight — nothing in the package ever puts a
-`CalSpec` in a set or uses one as a dict key — and it can be revisited if that changes.
+This has consequences beyond validation safety. `CalSpec` is not hashable:
+dataclass-generated `__hash__` would hash the field tuple, and a mapping is not hashable
+regardless of whether it is proxied. It also cannot be `copy.deepcopy`'d or pickled —
+both raise `TypeError: cannot pickle 'mappingproxy' object`, since `mappingproxy` objects
+do not support either operation. These are deliberate YAGNI calls rather than an
+oversight — nothing in the package ever puts a `CalSpec` in a set, uses one as a dict key,
+deep-copies one, or serialises one — and they can be revisited if that changes.
 
 #### Where `parameter_label` values come from
 

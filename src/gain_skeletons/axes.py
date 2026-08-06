@@ -5,8 +5,10 @@ dimension is the axis name and whose attributes follow the MSv4 vocabulary, so
 that a factory's output can be inspected on its own or dropped straight into a
 dataset.
 
-Sized axes take an integer extent and generate values with ``linspace`` or
-``arange``, with overridable endpoints. Label axes take their values verbatim.
+Sized axes take an integer extent. ``frequency_coord`` generates a ``linspace``
+between overridable endpoints; ``time_coord`` generates an overridable origin
+plus an overridable step via ``arange``; ``direction_coord`` is a plain
+``arange`` with no overrides at all. Label axes take their values verbatim.
 """
 
 from collections.abc import Callable, Iterable, Sequence
@@ -38,6 +40,11 @@ DEFAULT_TIME_START = 1_700_000_000.0
 # MeerKAT L-band, so that generated datasets resemble real data.
 DEFAULT_FREQUENCY_START = 856.0e6
 DEFAULT_FREQUENCY_END = 1712.0e6
+
+# Dual-linear receptor labels, the default polarisation basis. Defined once
+# here so the builders' receptor_labels defaults cannot silently drift from
+# this factory's own default.
+DEFAULT_RECEPTOR_LABELS = ("X", "Y")
 
 
 def _check_size(axis: str, size: int) -> None:
@@ -201,7 +208,7 @@ def _label_coord(axis: str, labels: Sequence[str], long_name: str) -> xr.DataArr
     )
 
 
-def receptor_label_coord(labels: Sequence[str] = ("X", "Y")) -> xr.DataArray:
+def receptor_label_coord(labels: Sequence[str] = DEFAULT_RECEPTOR_LABELS) -> xr.DataArray:
     """Build a receptor label coordinate.
 
     Args:

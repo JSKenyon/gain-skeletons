@@ -86,5 +86,8 @@ either call.
 `docs/reference/calibration-dataset-coordinate-dimensions.pdf`, slides 6 and 7, for the
 calibration type catalogue itself.
 `docs/superpowers/specs/2026-08-06-gain-skeletons-design.md` for the design rationale,
-including where and why this implementation deliberately departs from the deck (`dtype` on
-`ParamSpec` rather than `CalSpec`, the two-layout split, and others).
+including where and why this implementation deliberately departs from the deck: the
+consolidated layout, which carries heterogeneous-unit parameters along one
+`parameter_label` axis where the deck stores each differently-united quantity in its own
+array, and the `FLAG` rule — one boolean flag per dataset, omitting `parameter_label` —
+which the deck never addresses at all, since it never mentions flags.

@@ -100,6 +100,35 @@ def test_coord_kwargs_for_absent_axis_is_rejected():
         make_gain_xds("antpos", coord_kwargs={"frequency": {"start": 1.0e9}})
 
 
+# coord_kwargs configures a generated range. Label axes take their values from
+# labels, and direction_coord takes no keywords, so naming either is a user
+# error rather than something to silently discard.
+def test_coord_kwargs_for_label_axis_is_rejected():
+    with pytest.raises(ValueError, match="receptor_labels"):
+        make_gain_xds("G", coord_kwargs={"receptor_label": {"labels": ("R", "L")}})
+
+
+def test_coord_kwargs_for_parameter_label_is_rejected():
+    with pytest.raises(ValueError, match="no coordinate configuration"):
+        make_gain_xds("antpos", coord_kwargs={"parameter_label": {"labels": ("a", "b", "c")}})
+
+
+def test_coord_kwargs_for_direction_is_rejected():
+    with pytest.raises(ValueError, match="no coordinate configuration"):
+        make_gain_xds("dd_gain", coord_kwargs={"direction": {"start": 1}})
+
+
+@pytest.mark.parametrize("axis", ["time", "antenna_name", "frequency"])
+def test_coord_kwargs_accepted_for_configurable_axes(axis):
+    kwargs = {
+        "time": {"interval": 4.0},
+        "antenna_name": {"prefix": "ea"},
+        "frequency": {"start": 1.0e9},
+    }
+    xds = make_gain_xds("B", coord_kwargs={axis: kwargs[axis]})
+    assert axis in xds.coords
+
+
 # FLAG marks a whole solution bad. The components of one solution are not
 # independently valid, so FLAG never carries the parameter axis.
 @pytest.mark.parametrize("key", list_cal_types())
@@ -226,11 +255,16 @@ class TestFringefitConsolidation:
         assert xds.FLAG.dims == ("time", "antenna_name", "frequency", "receptor_label")
 
 
-@pytest.mark.parametrize("key", list_cal_types())
+# Restricted to the types whose parameters actually share a unit, so every
+# parametrized case makes a real assertion. fringefit is the only type this
+# excludes, and it is covered separately by TestFringefitConsolidation above.
+UNIFORM_UNIT_KEYS = [key for key in list_cal_types() if get_spec(key).uniform_units is not None]
+
+
+@pytest.mark.parametrize("key", UNIFORM_UNIT_KEYS)
 def test_uniform_unit_entries_have_no_parameter_units_coord(key):
     xds = make_gain_xds(key)
-    if get_spec(key).uniform_units is not None:
-        assert "parameter_units" not in xds.coords
+    assert "parameter_units" not in xds.coords
 
 
 def test_mixed_dtype_spec_cannot_consolidate():

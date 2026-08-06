@@ -35,11 +35,13 @@ print(xds.GAIN.dims, xds.GAIN.shape, xds.GAIN.dtype)
 
 - **`axes.py`** — one coordinate factory per axis (`time_coord`, `frequency_coord`, and so
   on), each returning a standalone `xr.DataArray` with MSv4-style attributes.
-- **`spec.py`** — `ParamSpec` and `CalSpec`, the frozen, self-validating dataclasses that
-  declare a calibration type without any code of its own.
-- **`registry.py` and `builder.py`** — `registry.py` holds the catalogue of `CalSpec`
-  objects transcribed from the deck; `builder.py`'s `make_gain_xds` and
-  `make_split_gain_xds` turn any `CalSpec` (registered or hand-built) into datasets.
+- **`spec.py` and `registry.py`** — `spec.py` defines `ParamSpec` and `CalSpec`, the
+  frozen, self-validating dataclasses that declare a calibration type without any code of
+  its own; `registry.py` holds the catalogue of `CalSpec` objects transcribed from the
+  deck, built on top of them.
+- **`builder.py`** — `make_gain_xds` and `make_split_gain_xds` turn any `CalSpec`
+  (registered or hand-built) into datasets. It imports `registry.py`, so it sits alone on
+  top rather than sharing a layer with it.
 
 ## Two layouts
 

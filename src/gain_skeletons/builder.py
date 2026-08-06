@@ -22,6 +22,7 @@ import numpy as np
 import xarray as xr
 
 from gain_skeletons.axes import (
+    DEFAULT_RECEPTOR_LABELS,
     SIZED_AXIS_FACTORIES,
     parameter_label_coord,
     receptor_label_coord,
@@ -36,6 +37,11 @@ DEFAULT_AMPLITUDE_JITTER = 0.1
 
 FLAG_NAME = "FLAG"
 PARAMETER_UNITS_COORD = "parameter_units"
+
+# Only these axes have factories taking extra keyword arguments. direction_coord
+# takes none, and the label axes get their values from labels rather than from a
+# generated range.
+COORD_KWARGS_AXES = ("time", "antenna_name", "frequency")
 
 # Maps the builders' keyword arguments to the axes they size. Keeping the
 # public names short (n_antenna, not n_antenna_name) at the cost of this table.
@@ -109,19 +115,42 @@ def _build_coords(
         labels: Parameter labels, used when axes includes parameter_label.
         receptor_labels: Receptor labels, used when axes includes receptor_label.
         coord_kwargs: Axis name to extra keyword arguments for that axis's
-            factory, such as frequency start and end.
+            factory, such as frequency start and end. Only accepted for
+            ``time``, ``antenna_name``, and ``frequency`` (see
+            COORD_KWARGS_AXES); direction_coord takes no keywords at all, and
+            the label axes (receptor_label, parameter_label) get their values
+            from labels rather than from a generated range.
 
     Returns:
         Axis name to coordinate.
 
     Raises:
-        ValueError: If coord_kwargs names an axis the calibration type lacks.
+        ValueError: If coord_kwargs names an axis the calibration type lacks,
+            or names an axis that takes no coordinate configuration.
     """
     unknown = [axis for axis in coord_kwargs if axis not in axes]
     if unknown:
         raise ValueError(
             f"calibration type {spec.name!r} has no {unknown[0]!r} axis, so coord_kwargs "
             f"cannot configure it; its axes are {list(axes)}"
+        )
+
+    # Only the sized, ranged axes have factories that accept extra keywords.
+    # Naming a label axis or direction here would otherwise be silently
+    # discarded (label axes) or blow up inside the factory with an unrelated
+    # TypeError (direction_coord), neither of which is the clear error a
+    # genuine user mistake deserves.
+    not_configurable = [axis for axis in coord_kwargs if axis not in COORD_KWARGS_AXES]
+    if not_configurable:
+        axis = not_configurable[0]
+        hint = (
+            " Receptor labels are set with the receptor_labels parameter, not coord_kwargs."
+            if axis == "receptor_label"
+            else ""
+        )
+        raise ValueError(
+            f"{axis!r} takes no coordinate configuration; coord_kwargs only configures "
+            f"{list(COORD_KWARGS_AXES)}.{hint}"
         )
 
     coords: dict[str, xr.DataArray] = {}
@@ -224,6 +253,14 @@ def _generate_flags(
     Returns:
         A boolean array of the requested shape.
     """
+    # These two short circuits skip drawing from rng entirely, rather than
+    # drawing and thresholding as usual. That means changing flag_fraction to
+    # or from 0.0 or 1.0 changes how many values rng has yielded by the time
+    # the next parameter is generated in the split layout, where flags for
+    # one parameter are drawn before the next parameter's values. The values
+    # of later parameters therefore shift with flag_fraction even though
+    # nothing about those parameters changed — a non-obvious coupling that is
+    # otherwise silent.
     if flag_fraction <= 0.0:
         return np.zeros(shape, dtype=bool)
     if flag_fraction >= 1.0:
@@ -275,7 +312,7 @@ def make_gain_xds(
     n_time: int | None = None,
     n_antenna: int | None = None,
     n_frequency: int | None = None,
-    receptor_labels: Sequence[str] = ("X", "Y"),
+    receptor_labels: Sequence[str] = DEFAULT_RECEPTOR_LABELS,
     coord_kwargs: Mapping[str, Mapping[str, Any]] | None = None,
     seed: int | None = 0,
     flag_fraction: float = DEFAULT_FLAG_FRACTION,
@@ -301,6 +338,10 @@ def make_gain_xds(
         receptor_labels: Receptor labels, if the type has a receptor axis.
         coord_kwargs: Axis name to extra keyword arguments for that axis's
             coordinate factory, such as ``{"frequency": {"start": 1e9}}``.
+            Only ``time``, ``antenna_name``, and ``frequency`` accept extra
+            keywords; direction_coord takes none, and the label axes get
+            their values from receptor_labels or the parameter's own labels
+            instead.
         seed: Seed for the random generator, for reproducibility.
         flag_fraction: Probability that any given solution is flagged.
         amplitude_jitter: Fractional spread of complex amplitude about unity.
@@ -311,8 +352,10 @@ def make_gain_xds(
 
     Raises:
         ValueError: If the parameters do not share a dtype, if a size or
-            coord_kwargs entry names an axis the type lacks, or if
-            flag_fraction is out of range.
+            coord_kwargs entry names an axis the type lacks, if coord_kwargs
+            names an axis that takes no coordinate configuration, if the type
+            has more than one parameter but no parameter_label axis to
+            consolidate them onto, or if flag_fraction is out of range.
         KeyError: If spec is a name that is not registered.
     """
     spec = _resolve_spec(spec)
@@ -429,7 +472,7 @@ def make_split_gain_xds(
     n_time: int | None = None,
     n_antenna: int | None = None,
     n_frequency: int | None = None,
-    receptor_labels: Sequence[str] = ("X", "Y"),
+    receptor_labels: Sequence[str] = DEFAULT_RECEPTOR_LABELS,
     coord_kwargs: Mapping[str, Mapping[str, Any]] | None = None,
     seed: int | None = 0,
     flag_fraction: float = DEFAULT_FLAG_FRACTION,
@@ -447,7 +490,10 @@ def make_split_gain_xds(
 
     For a calibration type with one parameter, which is nine of the ten
     registered types, this returns a single dataset identical to the one
-    :func:`make_gain_xds` produces.
+    :func:`make_gain_xds` produces, because the consolidated array then takes
+    its name from that sole parameter. The equivalence breaks if the spec
+    overrides consolidated_name, since the two layouts then name the array
+    differently even though there is only one parameter to name.
 
     Args:
         spec: A CalSpec, or the name of a registered calibration type.
@@ -457,7 +503,10 @@ def make_split_gain_xds(
         n_frequency: Override the frequency extent.
         receptor_labels: Receptor labels, for parameters with a receptor axis.
         coord_kwargs: Axis name to extra keyword arguments for that axis's
-            coordinate factory.
+            coordinate factory. Only ``time``, ``antenna_name``, and
+            ``frequency`` accept extra keywords; direction_coord takes none,
+            and the label axes get their values from receptor_labels or the
+            parameter's own labels instead.
         seed: Seed for the random generator, for reproducibility.
         flag_fraction: Probability that any given solution is flagged.
         amplitude_jitter: Fractional spread of complex amplitude about unity.
@@ -468,7 +517,8 @@ def make_split_gain_xds(
 
     Raises:
         ValueError: If a size or coord_kwargs entry names an axis the type
-            lacks, or if flag_fraction is out of range.
+            lacks, if coord_kwargs names an axis that takes no coordinate
+            configuration, or if flag_fraction is out of range.
         KeyError: If spec is a name that is not registered.
     """
     spec = _resolve_spec(spec)

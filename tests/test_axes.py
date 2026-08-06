@@ -40,6 +40,11 @@ def test_time_coord_carries_msv4_attributes():
     assert coord.attrs["format"] == "unix"
 
 
+def test_time_coord_carries_integration_time():
+    coord = time_coord(4, interval=2.0)
+    assert coord.attrs["integration_time"] == 2.0
+
+
 def test_frequency_coord_spans_the_requested_range():
     coord = frequency_coord(3, start=1.0e9, end=2.0e9)
     assert coord.dims == ("frequency",)
@@ -51,6 +56,24 @@ def test_frequency_coord_carries_msv4_attributes():
     assert coord.attrs["type"] == "spectral_coord"
     assert coord.attrs["units"] == "Hz"
     assert coord.attrs["observer"] == "topo"
+
+
+def test_frequency_coord_carries_reference_frequency():
+    coord = frequency_coord(4, start=1.0e9, end=2.0e9)
+    assert coord.attrs["reference_frequency"] == 1.0e9
+
+
+# A size-one axis and a size-two axis both give channel_width = end - start,
+# so that alone cannot distinguish "divide by size - 1" from "don't divide at
+# all". A size-three axis pins the actual division.
+def test_channel_width_divides_by_the_number_of_gaps():
+    coord = frequency_coord(3, start=0.0, end=2.0)
+    assert coord.attrs["channel_width"] == 1.0
+
+
+def test_channel_width_for_a_single_channel_is_the_full_span():
+    coord = frequency_coord(1, start=1.0e9, end=2.0e9)
+    assert coord.attrs["channel_width"] == 1.0e9
 
 
 # A single channel must sit at the range start, not its midpoint: a size-one

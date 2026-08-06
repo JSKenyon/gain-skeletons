@@ -87,6 +87,14 @@ def test_size_for_absent_axis_is_rejected():
         make_split_gain_xds("antpos", n_frequency=64)
 
 
+# coord_kwargs configures a generated range. Label axes take their values from
+# labels, so naming one is a user error rather than something to silently
+# discard, and this must hold for the split builder too.
+def test_coord_kwargs_for_label_axis_is_rejected():
+    with pytest.raises(ValueError, match="receptor_labels"):
+        make_split_gain_xds("G", coord_kwargs={"receptor_label": {"labels": ("R", "L")}})
+
+
 def test_invalid_flag_fraction_is_rejected():
     with pytest.raises(ValueError, match="flag_fraction"):
         make_split_gain_xds("G", flag_fraction=2.0)
@@ -141,6 +149,23 @@ def test_layouts_agree_for_single_parameter_types(key):
     assert len(split) == 1
     (only,) = split.values()
     assert consolidated.identical(only)
+
+
+# The layouts agree for single-parameter types because the consolidated array
+# takes its name from the sole parameter. A spec that overrides
+# consolidated_name breaks that, which is why the docstring qualifies it.
+def test_custom_consolidated_name_breaks_single_parameter_equivalence():
+    spec = CalSpec(
+        name="odd",
+        parameters=(ParamSpec("VAL", "m", ("time",), "float64"),),
+        default_sizes={"time": 3},
+        consolidated_name="PARAMETER",
+    )
+    consolidated = make_gain_xds(spec, seed=5)
+    (only,) = make_split_gain_xds(spec, seed=5).values()
+    assert "PARAMETER" in consolidated.data_vars
+    assert "VAL" in only.data_vars
+    assert not consolidated.identical(only)
 
 
 def test_fringefit_is_the_only_type_where_layouts_differ():
