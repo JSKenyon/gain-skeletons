@@ -93,17 +93,25 @@ def test_dataset_and_variable_attributes_are_preserved(tmp_path):
 # The layouts differ on disk as well as in memory: one chunked array against
 # four separate stores. This is the difference the notebook exists to show.
 def test_consolidated_stores_one_array_where_split_stores_four(tmp_path):
-    consolidated_path = tmp_path / "consolidated.zarr"
-    make_gain_xds("fringefit").to_zarr(consolidated_path, consolidated=False)
-    parameter_arrays = {
-        entry.name
-        for entry in consolidated_path.iterdir()
-        if entry.is_dir() and entry.name not in {"time", "antenna_name", "frequency"}
-    }
-    assert "PARAMETER" in parameter_arrays
+    consolidated = make_gain_xds("fringefit")
+    path = tmp_path / "consolidated.zarr"
+    consolidated.to_zarr(path, consolidated=False)
+
+    # A zarr store holds one top-level directory per array, whether that
+    # array is a data variable or a coordinate.
+    on_disk = {e.name for e in path.iterdir() if e.is_dir()}
+    expected = set(consolidated.data_vars) | set(consolidated.coords)
+    assert on_disk == expected
+
+    # The point of consolidating: ONE parameter array, not four.
+    assert set(consolidated.data_vars) == {"PARAMETER", "FLAG"}
 
     split = make_split_gain_xds("fringefit")
-    for name, xds in split.items():
-        xds.to_zarr(tmp_path / f"split_{name}.zarr", consolidated=False)
     assert len(split) == 4
-    assert all((tmp_path / f"split_{name}.zarr" / name).is_dir() for name in split)
+    for name, xds in split.items():
+        store = tmp_path / f"split_{name}.zarr"
+        xds.to_zarr(store, consolidated=False)
+        assert set(xds.data_vars) == {name, "FLAG"}
+        assert {e.name for e in store.iterdir() if e.is_dir()} == (
+            set(xds.data_vars) | set(xds.coords)
+        )
