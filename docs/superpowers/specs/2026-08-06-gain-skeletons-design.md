@@ -134,12 +134,16 @@ declare a `CalSpec` as direction-dependent while omitting the `direction` axis, 
 versa, because there is nothing separate to declare.
 
 `default_sizes` covers only the sized axes — `direction`, `time`, `antenna_name`,
-`frequency`, `receptor_label` — that the calibration type actually uses, and it is
-*required* for every one of them, not optional: `CalSpec.__post_init__` raises if any sized
-axis in use is missing from `default_sizes`, and separately raises if `default_sizes` names
-an axis the type does not use at all. The extent of `parameter_label` is never
-configurable: it is always `len(labels)`, because each position along it denotes a
-specific named parameter.
+`frequency` — that the calibration type actually uses, and it is *required* for every one
+of them, not optional. `receptor_label` and `parameter_label` are *label* axes, not sized
+ones: their extent follows from the labels they carry, not from a size a caller supplies.
+`CalSpec.__post_init__` checks `default_sizes` three ways: it raises if a label axis
+(`receptor_label` or `parameter_label`) appears in `default_sizes` at all, since its
+extent is never configurable; it raises if `default_sizes` names an axis the calibration
+type does not use, sized or not; and it raises if any sized axis the type *does* use is
+missing from `default_sizes`. The extent of `parameter_label` is always `len(labels)`,
+because each position along it denotes a specific named parameter, and the extent of
+`receptor_label` is always `len(receptor_labels)` for the same reason.
 
 `__post_init__` also snapshots the validated `default_sizes` into a read-only
 `types.MappingProxyType` and rebinds the attribute to that snapshot via
@@ -418,7 +422,13 @@ logic of its own. Narrative:
 - Development environment is `.venv`, created with `uv venv`, populated with
   `uv pip install -e ".[dev,notebook]"`.
 
-## Deferred
+## Delivered alongside this design
 
-- `CLAUDE.md`, written once the package exists rather than guessed at up front.
-- A `README.md` covering install and the three-layer API.
+- `README.md` — install, the minimal example, the three layers, the two layouts, and the
+  registry table.
+- `CLAUDE.md` — orientation for future work in this repository: the commands, the
+  data-not-code registry idea, the presence-versus-extent rule, and why
+  `tests/test_registry.py` duplicates `registry.py` on purpose.
+
+Both were deliberately written once the package existed rather than guessed at up front.
+Nothing from the original design remains deferred.
