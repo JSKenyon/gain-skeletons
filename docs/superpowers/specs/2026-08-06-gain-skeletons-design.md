@@ -50,10 +50,19 @@ registry.py   the slide 6-7 catalogue
 builder.py    make_gain_xds, make_split_gain_xds
 ```
 
-`__init__.py` re-exports the public names. There is no I/O module: writing and reading
-are `xds.to_zarr(path)` and `xr.open_dataset(path, engine="zarr")`, called directly by
-the notebook and tests. Wrapping a one-liner would obscure the very thing the package
-sets out to show.
+`__init__.py` re-exports the public names. There is no I/O module: writing and reading are
+`xds.to_zarr(path, consolidated=False)` and
+`xr.open_dataset(path, engine="zarr", consolidated=False)`, called directly by the
+notebook and tests. Wrapping a one-liner would obscure the very thing the package sets out
+to show.
+
+`consolidated=False` is required on **both** calls, not just the write. Zarr format 3 does
+not specify consolidated metadata: omitting the flag on write makes xarray emit a warning
+about writing metadata that format 3 does not support, and omitting it on read makes
+xarray emit a *different* warning — a `RuntimeWarning`, not a `UserWarning` — because it
+goes looking for consolidated metadata that was never written and does not find it. Both
+warnings are silenced only by passing the flag on the corresponding call; passing it on
+just one leaves the other's warning live.
 
 ### `axes.py` — coordinate factories
 
@@ -88,6 +97,7 @@ class ParamSpec:
     name: str                              # e.g. "DELAY"
     units: str                             # e.g. "s"
     axes: tuple[str, ...]                  # axes this parameter is defined over
+    dtype: str                              # "complex64" or "float64"
     labels: tuple[str, ...] | None = None  # parameter_label values; None means (name,)
     scale: float = 1.0                     # magnitude hint for random float generation
 
@@ -95,22 +105,51 @@ class ParamSpec:
 class CalSpec:
     name: str
     parameters: tuple[ParamSpec, ...]
-    dtype: str                              # "complex64" or "float64"
-    default_sizes: Mapping[str, int]        # per-axis default extent
-    consolidated_name: str = "PARAMETER"    # array name in consolidated layout
+    default_sizes: Mapping[str, int]        # required for every sized axis in use
+    consolidated_name: str | None = None    # array name in consolidated layout; None
+                                             # defaults to the sole parameter's name
     jones_structure: str | None = None      # "diagonal" | "off-diagonal" | "scalar" | "full"
     description: str = ""
 ```
 
+`dtype` lives on `ParamSpec`, not `CalSpec`. A single dtype on `CalSpec` would apply to
+every parameter uniformly, which makes the mixed-dtype `ValueError` documented under
+[Trade-off between the layouts](#trade-off-between-the-layouts) unreachable: nothing could
+ever construct the calibration type the error is supposed to reject. Putting `dtype` on
+`ParamSpec` lets one `CalSpec` hold parameters of different dtypes, so the check has
+something to check.
+
 `CalSpec` validates on construction: axis names must be known, axes must be given in
 canonical order, a parameter declaring `labels` longer than one must include
-`parameter_label` in its `axes`, labels must be unique across the whole `CalSpec`, and
-consolidation preconditions (below) must be checkable.
+`parameter_label` in its `axes`, labels must be unique across the whole `CalSpec`, a
+multi-parameter type must set `consolidated_name`, and `default_sizes` must correspond
+exactly to the sized axes in use. It does *not* validate that a multi-parameter type has a
+`parameter_label` axis to consolidate onto — that is a precondition of `make_gain_xds`, not
+of a well-formed `CalSpec`, since `make_split_gain_xds` has no such need. See
+[`builder.py`](#builderpy--two-layouts) below.
+
+`CalSpec.direction_dependent` is a derived property, not a declared field: it is `True`
+exactly when `"direction"` appears in the union of the parameters' axes. There is no way to
+declare a `CalSpec` as direction-dependent while omitting the `direction` axis, or vice
+versa, because there is nothing separate to declare.
 
 `default_sizes` covers only the sized axes — `direction`, `time`, `antenna_name`,
-`frequency`, `receptor_label`. The extent of `parameter_label` is never configurable: it
-is always `len(labels)`, because each position along it denotes a specific named
-parameter.
+`frequency`, `receptor_label` — that the calibration type actually uses, and it is
+*required* for every one of them, not optional: `CalSpec.__post_init__` raises if any sized
+axis in use is missing from `default_sizes`, and separately raises if `default_sizes` names
+an axis the type does not use at all. The extent of `parameter_label` is never
+configurable: it is always `len(labels)`, because each position along it denotes a
+specific named parameter.
+
+`__post_init__` also snapshots the validated `default_sizes` into a read-only
+`types.MappingProxyType` and rebinds the attribute to that snapshot via
+`object.__setattr__`. `frozen=True` stops a caller from doing `spec.default_sizes = ...`,
+but it does nothing to stop them mutating the dict they passed in after construction —
+without the snapshot, that mutation would silently invalidate an already-validated spec.
+One consequence is that `CalSpec` is not hashable: dataclass-generated `__hash__` would hash
+the field tuple, and a mapping is not hashable regardless of whether it is proxied. This is
+a deliberate YAGNI call rather than an oversight — nothing in the package ever puts a
+`CalSpec` in a set or uses one as a dict key — and it can be revisited if that changes.
 
 #### Where `parameter_label` values come from
 
@@ -127,6 +166,18 @@ In the consolidated layout, `parameter_label` is the concatenation of every para
 labels in declaration order. In the split layout, each dataset gets only its own
 parameter's labels — length one for each Fringefit quantity, matching the deck's
 `nPar=1`.
+
+`ParamSpec.scale` is a magnitude hint for random float generation: a delay in seconds and
+a phase in degrees should not come out looking the same size, so each float parameter
+carries its own scale (see [Random data](#random-data)). Complex parameters ignore it,
+since they are generated near unit amplitude regardless.
+
+`CalSpec.consolidated_name` defaults to `None`, which `resolved_consolidated_name`
+resolves to the sole parameter's name when there is exactly one parameter. This is what
+makes the two layouts produce data arrays of the same name for the nine single-parameter
+types — `make_gain_xds("B")` and `make_split_gain_xds("B")` both call the array `GAIN`
+without either function needing to be told to. Only `fringefit`, with four parameters,
+must set `consolidated_name` explicitly (to `"PARAMETER"`).
 
 Whether `parameter_label` exists at all is declared per parameter in `axes`, exactly like
 every other optional axis: `G` omits it, `J` and `antpos` and all four Fringefit
@@ -174,7 +225,7 @@ overrides, so switching layout is a one-line change.
 | | `make_gain_xds(spec, ...)` | `make_split_gain_xds(spec, ...)` |
 | --- | --- | --- |
 | Returns | one `xr.Dataset` | `dict[str, xr.Dataset]`, keyed by parameter name |
-| Data arrays | `spec.consolidated_name`, plus `FLAG` | one named array plus `FLAG`, per dataset |
+| Data arrays | `spec.resolved_consolidated_name`, plus `FLAG` | one named array plus `FLAG`, per dataset |
 | `parameter_label` | labels every parameter of every quantity | that quantity's own labels |
 | Axes | union over all parameters, broadcast as needed | each quantity's exact axes |
 | Units | `units` attr when uniform, else `parameter_units` coord | scalar `units` attr always |
@@ -209,6 +260,15 @@ Split favours exact axes and uniform units:
 - Consolidation requires a common dtype, so a calibration type mixing complex and float
   quantities cannot consolidate at all. `make_gain_xds` raises a `ValueError` naming the
   offending parameters in that case.
+
+`make_gain_xds` also raises `ValueError` for a multi-parameter `CalSpec` with no
+`parameter_label` axis. Without the guard, the consolidated fill loop has no way to tell
+one parameter's slice from another's and silently keeps only the last one written — a
+real bug caught during implementation, not a hypothetical. Such a spec is not invalid: it
+is only unconsolidatable. `make_split_gain_xds` has no such restriction, since each
+parameter gets its own dataset regardless of whether a parameter axis exists. This is why
+the check lives in `make_gain_xds` rather than in `CalSpec.__post_init__` — see
+[`spec.py`](#specpy--the-declarative-model) above.
 
 ### Units
 
@@ -261,9 +321,20 @@ The `(on-diag only)`, `(off-diag only)` and `(scalar, unpol!)` annotations becom
 `jones_structure` values rather than extra axes or arrays: per slide 5 they describe the
 *origin* of the data, not an instruction for its use.
 
+`jones_structure` is omitted from the attributes dict entirely when the calibration type
+has none — `opacity`, `antpos` and `ionosphere` — rather than stored as an explicit null.
+A `jones_structure: None` attribute would round-trip through zarr as a claim that the type
+was checked against the deck's Jones-matrix structure and found to have none; omission
+says only that the question does not apply.
+
 ## The registry
 
 Transcribed from slides 6 and 7. Sizes shown are defaults; all are overridable.
+
+The registry has **ten** entries, one row per table below. `fringefit` is a single entry
+holding four `ParamSpec`s, not four entries — counting `ParamSpec`s instead of registry
+keys gives nine single-parameter entries plus Fringefit's four, thirteen in total, which
+is a count of a different thing and not the size of the registry.
 
 Direction-independent (slide 6):
 
@@ -313,9 +384,10 @@ output stays readable.
 - **Mixed-dtype rejection.** A hand-built `CalSpec` mixing complex and float raises
   `ValueError` from `make_gain_xds`.
 - **Reproducibility.** Equal seeds give equal values; different seeds differ.
-- **Zarr round-trip.** `to_zarr` then `open_dataset(engine="zarr")` preserves dimensions,
-  complex dtypes, coordinate values, string coordinates, `parameter_units`, and both
-  dataset and variable attributes.
+- **Zarr round-trip.** `to_zarr(consolidated=False)` then
+  `open_dataset(engine="zarr", consolidated=False)` preserves dimensions, complex dtypes,
+  coordinate values, string coordinates, `parameter_units`, and both dataset and variable
+  attributes.
 
 Everything is fast and in-memory; zarr round-trips use `tmp_path`. No `slow` markers
 expected.
