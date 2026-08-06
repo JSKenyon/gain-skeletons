@@ -22,7 +22,7 @@
 - Canonical axis order, used everywhere without exception:
   `("direction", "time", "antenna_name", "frequency", "receptor_label", "parameter_label")`
 - Run `ruff check` and `ruff format` before every commit.
-- `xds.to_zarr(path, consolidated=False)` — zarr format 3 emits a `ZarrUserWarning` about consolidated metadata otherwise.
+- Pass `consolidated=False` on **both** write and read: `xds.to_zarr(path, consolidated=False)` and `xr.open_dataset(path, engine="zarr", consolidated=False)`. Zarr format 3 does not specify consolidated metadata, so xarray emits a `ZarrUserWarning` if asked to write it, and a `RuntimeWarning` if asked to look for metadata that was never written. Omitting it on the read side is easy to miss because the warning is a `RuntimeWarning`, not a `UserWarning`.
 
 ---
 
@@ -2942,7 +2942,9 @@ with tempfile.TemporaryDirectory() as tmp:
         xds.to_zarr(root / f"fringefit_{name}.zarr", consolidated=False)
     print("\nsplit stores:", sorted(p.name for p in root.glob("fringefit_*.zarr")))
 
-    reread = xr.open_dataset(root / "fringefit_consolidated.zarr", engine="zarr").load()
+    reread = xr.open_dataset(
+        root / "fringefit_consolidated.zarr", engine="zarr", consolidated=False
+    ).load()
     print("\nround-trip identical:", reread.identical(consolidated))
 ```
 
@@ -3005,7 +3007,7 @@ Edit `docs/superpowers/specs/2026-08-06-gain-skeletons-design.md`:
 - In the `spec.py` section, move `dtype` from `CalSpec` to `ParamSpec` and add a sentence explaining why: a single dtype on `CalSpec` makes the documented mixed-dtype `ValueError` unreachable.
 - Note that `CalSpec.direction_dependent` is derived from the presence of the `direction` axis rather than declared.
 - Note that `default_sizes` is required for every sized axis in use, not optional.
-- Add `consolidated=False` to the zarr guidance, with the zarr format 3 reason.
+- Add `consolidated=False` to the zarr guidance, on **both** write and read, with the zarr format 3 reason. The design document currently shows the read as `xr.open_dataset(path, engine="zarr")`, which emits a `RuntimeWarning` because it hunts for consolidated metadata that was never written.
 - Note that `jones_structure` is omitted from dataset attributes when None rather than stored as null.
 
 - [ ] **Step 2: Write the README**
@@ -3030,7 +3032,7 @@ Then cover only what is not discoverable from a glance at the tree:
 - **Axis presence versus axis extent.** The deck's `{nFreq=0}` means the axis is absent; `nFreq=1` means present with length one. `ParamSpec.axes` encodes presence, `CalSpec.default_sizes` encodes extent. Never substitute a length-one axis for an absent one.
 - **`tests/test_registry.py` duplicates `registry.py` on purpose.** It is an independent transcription of slides 6 and 7, so it checks the registry against the source deck rather than against itself. Do not factor the two tables together. When they disagree, verify against the PDF.
 - **`FLAG` never carries `parameter_label`.** A flag marks a solution bad, and one solution's components are not independently valid.
-- **zarr specifics.** Always `consolidated=False`; zarr format 3 warns otherwise. There is deliberately no I/O wrapper — use `xds.to_zarr` and `xr.open_dataset(path, engine="zarr")` directly.
+- **zarr specifics.** Always `consolidated=False`, on **both** write and read; zarr format 3 warns otherwise, and the read-side warning is a `RuntimeWarning` that a `-W error::UserWarning` check will not catch. There is deliberately no I/O wrapper — use `xds.to_zarr(path, consolidated=False)` and `xr.open_dataset(path, engine="zarr", consolidated=False)` directly.
 - **Where the source of truth lives.** `docs/reference/calibration-dataset-coordinate-dimensions.pdf`, slides 6 and 7. The design rationale, including the two deliberate departures from the deck, is in `docs/superpowers/specs/2026-08-06-gain-skeletons-design.md`.
 
 Do not restate the user's global rules, and do not list every file.
