@@ -336,6 +336,20 @@ def make_gain_xds(
         },
     )
     axes = spec.axes
+
+    # Consolidating several parameters requires somewhere to put them. Without
+    # a parameter_label axis, the fill loop below has no way to distinguish
+    # one parameter's slice from another's, and would silently keep only the
+    # last one written.
+    if len(spec.parameters) > 1 and "parameter_label" not in axes:
+        names = [param.name for param in spec.parameters]
+        raise ValueError(
+            f"calibration type {spec.name!r} cannot be consolidated because it has "
+            f"{len(spec.parameters)} parameters but no parameter_label axis to "
+            f"distinguish them: {names}. Give its parameters a parameter_label axis, "
+            "or use make_split_gain_xds instead."
+        )
+
     coords = _build_coords(
         spec,
         axes,

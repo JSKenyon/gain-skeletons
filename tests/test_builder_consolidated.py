@@ -245,3 +245,28 @@ def test_mixed_dtype_spec_cannot_consolidate():
     )
     with pytest.raises(ValueError, match="cannot be consolidated"):
         make_gain_xds(spec)
+
+
+# Consolidating several parameters needs an axis to distinguish them. Without
+# one there is nowhere to put them, and silently keeping only the last would
+# discard data.
+def test_multi_parameter_spec_without_parameter_axis_cannot_consolidate():
+    spec = CalSpec(
+        name="no_parameter_axis",
+        parameters=(
+            ParamSpec("A", "m", ("time", "antenna_name"), "float64"),
+            ParamSpec("B", "m", ("time", "antenna_name"), "float64"),
+        ),
+        default_sizes={"time": 4, "antenna_name": 8},
+        consolidated_name="PARAMETER",
+    )
+    with pytest.raises(ValueError, match="no parameter_label axis"):
+        make_gain_xds(spec)
+
+
+# A single parameter with no parameter axis is the normal case for G, B, D, T
+# and opacity, and must keep working.
+def test_single_parameter_spec_without_parameter_axis_still_builds():
+    xds = make_gain_xds("G")
+    assert "parameter_label" not in xds.dims
+    assert xds.GAIN.shape == (4, 8, 1, 2)
