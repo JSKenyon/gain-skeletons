@@ -41,13 +41,13 @@ right axes and `default_sizes`, not as a new code path.
 
 ## Two layouts, one spec
 
-`make_gain_xds` and `make_split_gain_xds` both consume the same `CalSpec`. They agree
-exactly for the nine of eleven calibration types with a single parameter, and
-`tests/test_builder_split.py` pins that agreement with `xds.identical()`. Preserving it
-depends on both builders drawing parameter values, and then flags, from an identically
-seeded `numpy.random.default_rng` in the same order — reorder that draw sequence in one
-builder and the equivalence test will catch it by producing different random values, not
-by erroring.
+`make_gain_xds` and `make_split_gain_xds` both consume the same `CalSpec` and both return
+one `xr.Dataset`. They agree exactly for the nine of eleven calibration types with a single
+parameter, and `tests/test_builder_split.py` pins that agreement with `xds.identical()`.
+Preserving it depends on both builders drawing every parameter's values, and only then the
+flags, from an identically seeded `numpy.random.default_rng` in the same order — reorder
+that draw sequence in one builder and the equivalence test will catch it by producing
+different random values, not by erroring.
 
 ## Axis presence versus axis extent
 
@@ -69,9 +69,10 @@ other.
 ## `FLAG` never carries `parameter_label`
 
 A flag marks a whole solution bad; the components of one solution — `antenna_positions`'s
-`dX` versus its `dY`, or a `delay`'s offset versus its slope — are not
-independently valid. `FLAG`'s dimensions are always the parameter array's dimensions minus
-`parameter_label`, in both layouts.
+`dX` versus its `dY`, or a `delay`'s offset versus its slope — are not independently valid.
+There is exactly one `FLAG` per dataset in both layouts. Its dimensions are every axis some
+parameter uses, minus `parameter_label`, so a quantity defined over fewer axes than its
+neighbours is still covered.
 
 ## zarr specifics
 
@@ -83,15 +84,26 @@ either call.
 
 ## Why the consolidated layout exists
 
-The obvious layout gives each differently-united quantity its own array, so `units` stays a
-scalar attribute — that is `make_split_gain_xds`. The consolidated layout trades that for
-memory and disk locality: the parameters needed to evaluate one Jones term sit adjacent in
-one chunked array rather than scattered across several, and one `FLAG` describes one solve.
-The cost is a `parameter_units` coordinate instead of a scalar attribute, and redundant
-broadcasting when a type mixes polarised and unpolarised quantities — `fringe_fit`'s
-`DISP_DELAY` is the only case in the registry. `delay` is multi-parameter without that
-cost, since both of its quantities are polarised. Neither layout is the correct one; keep both
-working.
+Both layouts produce one dataset per solve, carrying one `FLAG`. The only thing they
+disagree about is how that dataset holds the parameters. The obvious layout gives each
+quantity its own array, named for it, so `units` stays a scalar attribute and each array
+keeps exactly the axes it needs — that is `make_split_gain_xds`. The consolidated layout
+trades that for locality: the parameters needed to evaluate one Jones term sit adjacent in
+one chunked array rather than in several that chunk and compress independently. The cost is
+a `parameter_units` coordinate instead of a scalar attribute, and redundant broadcasting
+when a type mixes polarised and unpolarised quantities — `fringe_fit`'s `DISP_DELAY` is the
+only case in the registry. `delay` is multi-parameter without that cost, since both of its
+quantities are polarised. Neither layout is the correct one; keep both working.
+
+## `parameter_label` does two jobs
+
+It distinguishes components within one parameter — `antenna_positions`' `dX` from its `dY` —
+and, in the consolidated layout only, one parameter from another. The first job survives in
+both layouts. The second does not survive splitting, where each array carries its
+parameter's name: a length-one `parameter_label` restating that name would say nothing, and
+four such axes could not coexist in one dataset anyway. So `_split_axes` drops the axis for
+a parameter with a single label and keeps it for a parameter with several. This is the one
+place where the two layouts legitimately disagree about axis presence.
 
 ## Scope
 

@@ -1,11 +1,13 @@
 """Builders that turn a calibration type specification into a dataset.
 
-Two layouts are offered, and neither is privileged as the correct one.
-:func:`make_split_gain_xds` gives each differently-united quantity its own data
-array, so that units remain a scalar attribute. Consolidating every quantity
-into one array indexed by an explicit parameter axis, which
-:func:`make_gain_xds` does, keeps the parameters needed to evaluate a Jones term
-adjacent in memory and on disk, and lets a single flag describe a single solve.
+Two layouts are offered, and neither is privileged as the correct one. Both
+produce one dataset per solve, with one flag describing it; they differ in how
+that dataset holds the parameters. :func:`make_split_gain_xds` gives each
+quantity its own data array, named for it, so that units remain a scalar
+attribute and no quantity is padded out over an axis it does not need.
+:func:`make_gain_xds` puts every quantity in one array indexed by an explicit
+parameter axis, keeping the parameters needed to evaluate a Jones term adjacent
+in memory and in one chunked array on disk.
 
 Nine of the eleven registry entries declare one parameter, and for those the two
 builders produce identical datasets. The layouts diverge only for delay and
@@ -239,6 +241,53 @@ def _flag_dims(dims: Sequence[str]) -> tuple[str, ...]:
     return tuple(dim for dim in dims if dim != "parameter_label")
 
 
+def _split_parameter_labels(spec: CalSpec) -> tuple[str, ...] | None:
+    """Resolve the parameter axis a split dataset's arrays share, if any.
+
+    In the split layout every array carries its parameter's name, so a
+    parameter axis whose single label restates that name says nothing and is
+    dropped. The axis survives only where a parameter has several labels of its
+    own — an antenna position offset's dX, dY and dZ, or a Jones term's aligned
+    and cross columns. Those arrays then share one axis, so two parameters
+    cannot ask for different labels on it.
+
+    Args:
+        spec: The calibration type.
+
+    Returns:
+        The shared labels, or None if no parameter needs the axis.
+
+    Raises:
+        ValueError: If two parameters want different labels on the shared axis.
+    """
+    label_sets = {
+        param.resolved_labels for param in spec.parameters if len(param.resolved_labels) > 1
+    }
+    if not label_sets:
+        return None
+    if len(label_sets) > 1:
+        raise ValueError(
+            f"calibration type {spec.name!r} cannot be split: its parameters ask for "
+            f"different labels on the shared parameter_label axis, {sorted(label_sets)}"
+        )
+    return label_sets.pop()
+
+
+def _split_axes(param: ParamSpec) -> tuple[str, ...]:
+    """Derive a parameter's axes in the split layout.
+
+    Args:
+        param: The parameter.
+
+    Returns:
+        The parameter's axes, without parameter_label when its only label
+        restates the parameter's own name.
+    """
+    if len(param.resolved_labels) > 1:
+        return param.axes
+    return tuple(axis for axis in param.axes if axis != "parameter_label")
+
+
 def _generate_flags(
     shape: tuple[int, ...],
     rng: np.random.Generator,
@@ -255,13 +304,10 @@ def _generate_flags(
         A boolean array of the requested shape.
     """
     # These two short circuits skip drawing from rng entirely, rather than
-    # drawing and thresholding as usual. That means changing flag_fraction to
-    # or from 0.0 or 1.0 changes how many values rng has yielded by the time
-    # the next parameter is generated in the split layout, where flags for
-    # one parameter are drawn before the next parameter's values. The values
-    # of later parameters therefore shift with flag_fraction even though
-    # nothing about those parameters changed — a non-obvious coupling that is
-    # otherwise silent.
+    # drawing and thresholding as usual. Both builders draw every parameter
+    # value before drawing any flag, so this cannot shift a parameter's values;
+    # it does mean the flags themselves are not a thresholded version of the
+    # same draws at the extremes.
     if flag_fraction <= 0.0:
         return np.zeros(shape, dtype=bool)
     if flag_fraction >= 1.0:
@@ -323,8 +369,8 @@ def make_gain_xds(
 
     Parameters share a single data array, indexed by an explicit parameter axis.
     This keeps the parameters needed to evaluate a Jones term adjacent in memory
-    and, once written, in one chunked zarr array. A single flag then describes a
-    single solve.
+    and, once written, in one chunked zarr array rather than several that chunk
+    and compress independently.
 
     Where the parameters do not all share an axis, the ones that lack it are
     broadcast over it. Where they do not all share units, units move from a
@@ -478,18 +524,25 @@ def make_split_gain_xds(
     seed: int | None = 0,
     flag_fraction: float = DEFAULT_FLAG_FRACTION,
     amplitude_jitter: float = DEFAULT_AMPLITUDE_JITTER,
-) -> dict[str, xr.Dataset]:
-    """Build one calibration dataset per parameter.
+) -> xr.Dataset:
+    """Build one calibration dataset holding one array per parameter.
 
-    Each quantity lives in its own data array so that units can be a scalar
-    attribute, and each keeps only the axes it is actually defined over. Nothing
-    is broadcast, and no parameter is padded out over an axis it does not need.
+    Each quantity lives in its own data array, named for the parameter, so that
+    units can be a scalar attribute and each array keeps only the axes it is
+    actually defined over. Nothing is broadcast, and no parameter is padded out
+    over an axis it does not need. One solve remains one dataset with one flag.
 
-    The cost is fragmentation. A calibration type whose quantities come from a
-    single solve is spread over several datasets, each with its own flag.
+    The cost is that the quantities are no longer adjacent: they occupy several
+    arrays, which chunk and compress independently once written, rather than
+    one array a reader can slice across.
+
+    A parameter axis whose single label restates its array's own name is
+    dropped, since the array name already carries it. The axis survives where a
+    parameter has several labels of its own, such as an antenna position
+    offset's dX, dY and dZ.
 
     For a calibration type with one parameter, which is nine of the eleven
-    registered types, this returns a single dataset identical to the one
+    registered types, this returns a dataset identical to the one
     :func:`make_gain_xds` produces, because the consolidated array then takes
     its name from that sole parameter. The equivalence breaks if the spec
     overrides consolidated_name, since the two layouts then name the array
@@ -512,13 +565,14 @@ def make_split_gain_xds(
         amplitude_jitter: Fractional spread of complex amplitude about unity.
 
     Returns:
-        Parameter name to dataset. Each dataset holds one array of that name
-        and a boolean FLAG.
+        A dataset holding one array per parameter, each named for it, plus a
+        single boolean FLAG covering the solve.
 
     Raises:
         ValueError: If a size or coord_kwargs entry names an axis the type
             lacks, if coord_kwargs names an axis that takes no coordinate
-            configuration, or if flag_fraction is out of range.
+            configuration, if two parameters want different labels on the
+            shared parameter axis, or if flag_fraction is out of range.
         KeyError: If spec is a name that is not registered.
     """
     spec = _resolve_spec(spec)
@@ -535,40 +589,42 @@ def make_split_gain_xds(
     )
     # Validate coord_kwargs against the whole calibration type, not each
     # parameter, so that configuring an axis only some parameters use is not an
-    # error.
+    # error. The result is discarded: the coordinates the dataset actually
+    # carries are built below, over the axes that survive splitting.
     _build_coords(spec, spec.axes, sizes, spec.all_labels, receptor_labels, coord_kwargs or {})
 
-    attrs = _dataset_attrs(spec)
+    labels = _split_parameter_labels(spec)
+    axes = tuple(axis for axis in spec.axes if labels is not None or axis != "parameter_label")
+    coords = _build_coords(
+        spec,
+        axes,
+        sizes,
+        labels or (),
+        receptor_labels,
+        {axis: kwargs for axis, kwargs in (coord_kwargs or {}).items() if axis in axes},
+    )
+
     rng = np.random.default_rng(seed)
-    datasets: dict[str, xr.Dataset] = {}
+    data_vars: dict[str, Any] = {}
 
+    # Every parameter's values are drawn before any flag, matching the order
+    # make_gain_xds draws in. That is what keeps the two layouts producing
+    # identical datasets for single-parameter types.
     for param in spec.parameters:
-        axes = param.axes
-        coords = _build_coords(
-            spec,
-            axes,
-            sizes,
-            param.resolved_labels,
-            receptor_labels,
-            {axis: kwargs for axis, kwargs in (coord_kwargs or {}).items() if axis in axes},
-        )
-        shape = tuple(coords[axis].size for axis in axes)
+        param_axes = _split_axes(param)
+        shape = tuple(coords[axis].size for axis in param_axes)
         values = _generate_values(param, shape, rng, amplitude_jitter)
+        data_vars[param.name] = (param_axes, values, {"units": param.units})
 
-        flag_dims = _flag_dims(axes)
-        flag_shape = tuple(coords[axis].size for axis in flag_dims)
+    # One solve, one flag. Its dimensions span every axis some parameter uses,
+    # so a quantity defined over fewer of them — an unpolarised one, say — is
+    # still covered.
+    flag_dims = _flag_dims(axes)
+    flag_shape = tuple(coords[axis].size for axis in flag_dims)
+    data_vars[FLAG_NAME] = (
+        flag_dims,
+        _generate_flags(flag_shape, rng, flag_fraction),
+        {"long_name": "Solution flag"},
+    )
 
-        datasets[param.name] = xr.Dataset(
-            data_vars={
-                param.name: (axes, values, {"units": param.units}),
-                FLAG_NAME: (
-                    flag_dims,
-                    _generate_flags(flag_shape, rng, flag_fraction),
-                    {"long_name": "Solution flag"},
-                ),
-            },
-            coords=coords,
-            attrs=dict(attrs),
-        )
-
-    return datasets
+    return xr.Dataset(data_vars=data_vars, coords=coords, attrs=_dataset_attrs(spec))

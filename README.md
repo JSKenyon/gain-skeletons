@@ -41,25 +41,33 @@ print(xds.GAIN.dims, xds.GAIN.shape, xds.GAIN.dtype)
 ## Two layouts
 
 Every calibration type can be built two ways, and neither is privileged as the correct
-one:
+one. Both give one solve one dataset with one `FLAG`; they differ in how that dataset
+holds the parameters:
 
-- **`make_gain_xds`** puts every parameter of a calibration type into one data array,
-  indexed by an explicit `parameter_label` axis. This keeps the parameters needed to
-  evaluate a Jones term adjacent in memory and, once written, in one chunked zarr array
-  rather than several, and lets a single `FLAG` describe a single solve. Putting a
-  polarised and an unpolarised parameter into the same array means broadcasting the
-  unpolarised one redundantly over `receptor_label` — visible in `fringe_fit`, where
-  `DISP_DELAY` is broadcast this way.
-- **`make_split_gain_xds`** gives each parameter its own dataset, with its own exact axes
-  and a scalar `units` attribute. Nothing is broadcast and no parameter is padded out over
-  an axis it does not need. The cost is fragmentation: a calibration type produced by one
-  solve, such as `fringe_fit`, is spread over four datasets with four independent flags.
+- **`make_gain_xds`** puts every parameter into one data array, indexed by an explicit
+  `parameter_label` axis. This keeps the parameters needed to evaluate a Jones term
+  adjacent in memory and, once written, in one chunked zarr array rather than several
+  that chunk and compress independently. Putting a polarised and an unpolarised parameter
+  into the same array means broadcasting the unpolarised one redundantly over
+  `receptor_label` — visible in `fringe_fit`, where `DISP_DELAY` is broadcast this way —
+  and units that vary between parameters move from a scalar attribute to a
+  `parameter_units` coordinate.
+- **`make_split_gain_xds`** gives each parameter its own data array within that dataset,
+  named for the parameter, with its own exact axes and a scalar `units` attribute. Nothing
+  is broadcast and no parameter is padded out over an axis it does not need. The cost is
+  that the quantities are no longer adjacent.
 
 For the nine calibration types with a single parameter, the two functions produce
 identical datasets — `tests/test_builder_split.py` pins this. The layouts diverge for
 `delay` and `fringe_fit`, the two types with several differently-united parameters, and
 only `fringe_fit` pays the broadcasting cost, since both of `delay`'s parameters are
 polarised.
+
+`parameter_label` does two jobs, and only one of them survives splitting. Where it
+distinguishes components within a single parameter — `antenna_positions`' `dX`, `dY` and
+`dZ` — it is present in both layouts. Where it would merely restate an array's own name,
+as it would for each of `fringe_fit`'s four quantities, the split layout drops it: the
+array name already carries that.
 
 ## The registry
 

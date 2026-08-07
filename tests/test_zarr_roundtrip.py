@@ -38,8 +38,8 @@ def test_consolidated_layout_survives_roundtrip(key, tmp_path):
 
 @pytest.mark.parametrize("key", list_cal_types())
 def test_split_layout_survives_roundtrip(key, tmp_path):
-    for name, xds in make_split_gain_xds(key).items():
-        assert xds.identical(roundtrip(xds, tmp_path / f"{key}_{name}.zarr"))
+    xds = make_split_gain_xds(key)
+    assert xds.identical(roundtrip(xds, tmp_path / f"{key}_split.zarr"))
 
 
 # Complex gains are the case most likely to be mangled by a storage layer, so
@@ -90,28 +90,38 @@ def test_dataset_and_variable_attributes_are_preserved(tmp_path):
     assert read.GAIN.attrs["units"] == "rel"
 
 
-# The layouts differ on disk as well as in memory: one chunked array against
-# four separate stores. This is the difference the notebook exists to show.
-def test_consolidated_stores_one_array_where_split_stores_four(tmp_path):
+def stored_arrays(xds: xr.Dataset, path) -> set[str]:
+    """Write a dataset to zarr and report the arrays the store holds.
+
+    Args:
+        xds: Dataset to write.
+        path: Destination store path.
+
+    Returns:
+        Names of the top-level arrays in the store, data variables and
+        coordinates alike.
+    """
+    xds.to_zarr(path, consolidated=False)
+    return {entry.name for entry in path.iterdir() if entry.is_dir()}
+
+
+# The layouts differ on disk as well as in memory: one chunked parameter array
+# against four that chunk and compress independently. Each is one store either
+# way. This is the difference the notebook exists to show.
+def test_consolidated_stores_one_parameter_array_where_split_stores_four(tmp_path):
     consolidated = make_gain_xds("fringe_fit")
-    path = tmp_path / "consolidated.zarr"
-    consolidated.to_zarr(path, consolidated=False)
+    split = make_split_gain_xds("fringe_fit")
 
-    # A zarr store holds one top-level directory per array, whether that
-    # array is a data variable or a coordinate.
-    on_disk = {e.name for e in path.iterdir() if e.is_dir()}
-    expected = set(consolidated.data_vars) | set(consolidated.coords)
-    assert on_disk == expected
-
-    # The point of consolidating: ONE parameter array, not four.
+    # A zarr store holds one top-level directory per array, whether that array
+    # is a data variable or a coordinate.
+    on_disk = stored_arrays(consolidated, tmp_path / "consolidated.zarr")
+    assert on_disk == set(consolidated.data_vars) | set(consolidated.coords)
     assert set(consolidated.data_vars) == {"PARAMETER", "FLAG"}
 
-    split = make_split_gain_xds("fringe_fit")
-    assert len(split) == 4
-    for name, xds in split.items():
-        store = tmp_path / f"split_{name}.zarr"
-        xds.to_zarr(store, consolidated=False)
-        assert set(xds.data_vars) == {name, "FLAG"}
-        assert {e.name for e in store.iterdir() if e.is_dir()} == (
-            set(xds.data_vars) | set(xds.coords)
-        )
+    split_on_disk = stored_arrays(split, tmp_path / "split.zarr")
+    assert split_on_disk == set(split.data_vars) | set(split.coords)
+    assert set(split.data_vars) == {"PHASE", "DELAY", "RATE", "DISP_DELAY", "FLAG"}
+
+    # Consolidating buys locality and pays for it with two extra coordinate
+    # arrays: the parameter labels, and the units that vary along them.
+    assert on_disk - split_on_disk == {"PARAMETER", "parameter_label", "parameter_units"}
