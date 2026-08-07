@@ -183,8 +183,8 @@ def test_cal_spec_rejects_no_parameters():
         CalSpec(name="empty", parameters=(), default_sizes={})
 
 
-# default_sizes exists to distinguish "nFreq=1" from "nFreq=nCh". Naming an
-# axis the calibration type does not have is a spec error.
+# default_sizes exists to give an axis that is present an extent — one channel
+# or many. Naming an axis the calibration type does not have is a spec error.
 def test_cal_spec_rejects_default_size_for_absent_axis():
     with pytest.raises(ValueError, match="not an axis of"):
         CalSpec(

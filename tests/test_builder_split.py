@@ -41,8 +41,8 @@ def test_no_dataset_needs_a_parameter_units_coord():
         assert "parameter_units" not in xds.coords
 
 
-# The deck gives each fringefit quantity nPar=1, so the parameter axis is
-# present but length one.
+# Each fringefit quantity is one parameter, so in the split layout the parameter
+# axis is present but length one.
 def test_each_fringefit_dataset_has_a_length_one_parameter_axis():
     for name, xds in make_split_gain_xds("fringefit").items():
         assert xds.sizes["parameter_label"] == 1

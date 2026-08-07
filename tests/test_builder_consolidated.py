@@ -19,7 +19,7 @@ def test_accepts_a_cal_spec_object():
     assert make_gain_xds(get_spec("G")).attrs["cal_type"] == "G"
 
 
-def test_g_has_the_dimensions_from_slide_6():
+def test_g_has_the_dimensions_from_the_catalogue():
     xds = make_gain_xds("G", n_time=4, n_antenna=8)
     assert xds.GAIN.dims == ("time", "antenna_name", "frequency", "receptor_label")
     assert xds.GAIN.shape == (4, 8, 1, 2)
@@ -194,7 +194,7 @@ def test_dataset_attributes_record_cal_type_and_direction_dependence():
 # Storing a null attribute is worse than omitting it: it asserts that the
 # calibration type has a Jones structure whose value happens to be nothing.
 @pytest.mark.parametrize("key", ["opacity", "antpos", "ionosphere", "fringefit"])
-def test_jones_structure_is_omitted_when_the_deck_gives_none(key):
+def test_jones_structure_is_omitted_when_the_type_has_none(key):
     assert "jones_structure" not in make_gain_xds(key).attrs
 
 

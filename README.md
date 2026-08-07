@@ -9,11 +9,6 @@ randomly generated; nothing here computes or applies calibration. It exists so y
 what such datasets look like on disk and how their coordinate axes behave, before any
 production schema is settled.
 
-The calibration types it builds are transcribed from George Moellenbrock's *Calibration
-Dataset Coordinate Dimensions* (2026-07-30). That deck is not redistributed here; slides 6
-and 7 hold the catalogue, and you will need your own copy to check the transcription
-against.
-
 ## Install
 
 ```bash
@@ -38,8 +33,7 @@ print(xds.GAIN.dims, xds.GAIN.shape, xds.GAIN.dtype)
   on), each returning a standalone `xr.DataArray` with MSv4-style attributes.
 - **`spec.py` and `registry.py`** — `spec.py` defines `ParamSpec` and `CalSpec`, the
   frozen, self-validating dataclasses that declare a calibration type without any code of
-  its own; `registry.py` holds the catalogue of `CalSpec` objects transcribed from the
-  deck, built on top of them.
+  its own; `registry.py` holds the catalogue of `CalSpec` objects, built on top of them.
 - **`builder.py`** — `make_gain_xds` and `make_split_gain_xds` turn any `CalSpec`
   (registered or hand-built) into datasets. It imports `registry.py`, so it sits alone on
   top rather than sharing a layer with it.
@@ -80,8 +74,10 @@ identical datasets — `tests/test_builder_split.py` pins this. The layouts dive
 | `dd_gain` | complex64 | `GAIN` (rel) | yes | on-diagonal only; single channel |
 | `ionosphere` | float64 | `TEC` (TECU) | yes | no frequency or receptor axis |
 
-Look up any entry with `gs.get_spec("fringefit")`, or list all keys with
-`gs.list_cal_types()`.
+The catalogue is illustrative, not exhaustive — it covers the range of coordinate shapes
+these datasets take. Look up any entry with `gs.get_spec("fringefit")`, or list all keys
+with `gs.list_cal_types()`. A hand-written `CalSpec` works everywhere a registered one
+does, so a type the registry does not carry needs no change to the package.
 
 ## Tests
 
@@ -92,9 +88,6 @@ python -m pytest
 
 ## Further reading
 
-- George Moellenbrock, *Calibration Dataset Coordinate Dimensions*, 2026-07-30 — the source
-  deck; slides 6 and 7 catalogue the calibration types the registry transcribes. Not
-  redistributed here.
-- [`notebooks/gain_skeletons_demo.ipynb`](notebooks/gain_skeletons_demo.ipynb) — a guided
-  tour through the coordinate factories, several calibration types, both layouts side by
-  side, and a zarr round-trip.
+[`notebooks/gain_skeletons_demo.ipynb`](notebooks/gain_skeletons_demo.ipynb) — a guided
+tour through the coordinate factories, several calibration types, both layouts side by
+side, and a zarr round-trip.

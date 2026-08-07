@@ -1,13 +1,13 @@
-"""Tests that the registry matches the source deck.
+"""Tests that the registry holds the intended calibration type catalogue.
 
-The expected values below are transcribed independently from slides 6 and 7 of
-George Moellenbrock's "Calibration Dataset Coordinate Dimensions" (2026-07-30),
-which is not committed to this repository. The duplication
-against registry.py is deliberate: it checks the registry against the source
-material rather than against itself. Do not factor these tables together.
+The expected values below restate every catalogue entry independently of
+registry.py. The duplication is deliberate: it pins each type's axes, units and
+dtype as a statement of intent, so that changing the registry has to be a
+deliberate act rather than something a test silently ratifies. Do not factor
+these tables together, and do not generate either from the other.
 
-Deck notation: "nFreq=1" means the frequency axis exists with length one, while
-"{nFreq=0}" means it does not exist at all.
+Presence and extent are distinguished throughout. A frequency axis of length one
+is present; a type with no frequency dependence has no frequency axis at all.
 """
 
 import pytest
@@ -17,8 +17,9 @@ from gain_skeletons.registry import REGISTRY, get_spec, list_cal_types
 TIME_ANT = ("time", "antenna_name")
 
 # (key, axes, parameter name, units, dtype, labels, jones_structure)
-SLIDE_6_DIRECTION_INDEPENDENT = [
-    # General "J": [nTime, nAnt, nFreq, nPol=2, nPar=2] (Complex) GAIN in [rel]
+DIRECTION_INDEPENDENT_CASES = [
+    # General Jones term: complex, channel-resolved, polarised, and carrying two
+    # gains per receptor on the parameter axis.
     (
         "J",
         (*TIME_ANT, "frequency", "receptor_label", "parameter_label"),
@@ -28,8 +29,7 @@ SLIDE_6_DIRECTION_INDEPENDENT = [
         ("aligned", "cross"),
         "full",
     ),
-    # Standard "G": [nTime, nAnt, nFreq=1, nPol=2] (Complex) GAIN in [rel] (on-diag
-    # only)
+    # Standard electronic gain: complex, one solution per band, on-diagonal only.
     (
         "G",
         (*TIME_ANT, "frequency", "receptor_label"),
@@ -39,8 +39,7 @@ SLIDE_6_DIRECTION_INDEPENDENT = [
         ("GAIN",),
         "diagonal",
     ),
-    # Standard "T": [nTime, nAnt, nFreq=1, {nPol=0}] (Complex) GAIN in [rel]
-    # (scalar, unpol!)
+    # Tropospheric gain: complex and scalar, so unpolarised — no receptor axis.
     (
         "T",
         (*TIME_ANT, "frequency"),
@@ -50,7 +49,7 @@ SLIDE_6_DIRECTION_INDEPENDENT = [
         ("GAIN",),
         "scalar",
     ),
-    # Opacity: [nTime, nAnt, nFreq=1, {nPol=0}] (Float) OPAC in [nepers] (unpol!)
+    # Atmospheric opacity: real, in nepers, unpolarised.
     (
         "opacity",
         (*TIME_ANT, "frequency"),
@@ -60,8 +59,7 @@ SLIDE_6_DIRECTION_INDEPENDENT = [
         ("OPAC",),
         None,
     ),
-    # Standard "B": [nTime, nAnt, nFreq=nCh, nPol=2] (Complex) GAIN in [rel]
-    # (on-diag only)
+    # Bandpass: as G but resolved per channel rather than one solution per band.
     (
         "B",
         (*TIME_ANT, "frequency", "receptor_label"),
@@ -71,8 +69,7 @@ SLIDE_6_DIRECTION_INDEPENDENT = [
         ("GAIN",),
         "diagonal",
     ),
-    # Standard "D": [nTime, nAnt, nFreq=nCh, nPol=2] (Complex) GAIN in [rel]
-    # (off-diag only)
+    # Polarisation leakage: channel-resolved, and off-diagonal rather than on.
     (
         "D",
         (*TIME_ANT, "frequency", "receptor_label"),
@@ -82,7 +79,8 @@ SLIDE_6_DIRECTION_INDEPENDENT = [
         ("GAIN",),
         "off-diagonal",
     ),
-    # Antpos: [nTime, nAnt, {nFreq=0}, {nPol=0}, nPar=3] (Float) (dX,dY,dZ) in [m]
+    # Antenna position offset: three same-unit components on the parameter axis,
+    # with neither frequency nor polarisation dependence.
     (
         "antpos",
         (*TIME_ANT, "parameter_label"),
@@ -95,9 +93,8 @@ SLIDE_6_DIRECTION_INDEPENDENT = [
 ]
 
 # (key, axes, parameter name, units, dtype, labels, jones_structure)
-SLIDE_7_DIRECTION_DEPENDENT = [
-    # Generic gain: [nDir, nTime, nAnt, nFreq=1, nPol=2] (Complex) GAIN in [rel]
-    # (on-diag only)
+DIRECTION_DEPENDENT_CASES = [
+    # Generic direction-dependent gain: G with a leading direction axis.
     (
         "dd_gain",
         ("direction", *TIME_ANT, "frequency", "receptor_label"),
@@ -107,17 +104,15 @@ SLIDE_7_DIRECTION_DEPENDENT = [
         ("GAIN",),
         "diagonal",
     ),
-    # Ionosphere: [nDir, nTime, nAnt, {nFreq=0}, {nPol=0}] (Float) TEC in [TECU]
+    # Ionospheric TEC: direction-dependent, but neither frequency- nor
+    # polarisation-dependent, so both of those axes are absent.
     ("ionosphere", ("direction", *TIME_ANT), "TEC", "TECU", "float64", ("TEC",), None),
 ]
 
-SINGLE_PARAMETER_CASES = SLIDE_6_DIRECTION_INDEPENDENT + SLIDE_7_DIRECTION_DEPENDENT
+SINGLE_PARAMETER_CASES = DIRECTION_INDEPENDENT_CASES + DIRECTION_DEPENDENT_CASES
 
-# Fringefit is the only multi-parameter entry. Slide 6 gives four lines:
-#   [nTime, nAnt, nFreq=1,  nPol=2,   nPar=1] (Float) PHASE      in [deg]
-#   [nTime, nAnt, nFreq=1,  nPol=2,   nPar=1] (Float) DELAY      in [s]
-#   [nTime, nAnt, nFreq=1,  nPol=2,   nPar=1] (Float) RATE       in [s/s]
-#   [nTime, nAnt, nFreq=1, {nPol=0},  nPar=1] (Float) DISP_DELAY in [s]
+# Fringefit is the only multi-parameter entry: four real quantities with
+# differing units, of which DISP_DELAY alone is unpolarised.
 POLARISED = (*TIME_ANT, "frequency", "receptor_label", "parameter_label")
 UNPOLARISED = (*TIME_ANT, "frequency", "parameter_label")
 FRINGEFIT_PARAMETERS = [
@@ -128,7 +123,7 @@ FRINGEFIT_PARAMETERS = [
 ]
 
 
-def test_registry_has_exactly_the_deck_entries():
+def test_registry_has_exactly_the_catalogue_entries():
     expected = {key for key, *_ in SINGLE_PARAMETER_CASES} | {"fringefit"}
     assert set(REGISTRY) == expected
 
@@ -142,7 +137,7 @@ def test_list_cal_types_matches_registry_keys():
     SINGLE_PARAMETER_CASES,
     ids=[case[0] for case in SINGLE_PARAMETER_CASES],
 )
-def test_single_parameter_entry_matches_deck(
+def test_single_parameter_entry_matches_catalogue(
     key, axes, param_name, units, dtype, labels, jones_structure
 ):
     spec = get_spec(key)
@@ -157,7 +152,7 @@ def test_single_parameter_entry_matches_deck(
     assert spec.jones_structure == jones_structure
 
 
-def test_fringefit_parameters_match_deck():
+def test_fringefit_parameters_match_catalogue():
     spec = get_spec("fringefit")
     actual = [(param.name, param.units, param.axes) for param in spec.parameters]
     assert actual == FRINGEFIT_PARAMETERS
@@ -176,8 +171,8 @@ def test_fringefit_units_are_heterogeneous():
     assert get_spec("fringefit").uniform_units is None
 
 
-# Slide 6 marks G, T, opacity and every fringefit quantity as single-channel,
-# while B and D are channel-resolved. That distinction lives in default_sizes.
+# G, T, opacity and every fringefit quantity are single-channel, while B and D
+# are channel-resolved. That distinction lives in default_sizes.
 @pytest.mark.parametrize("key", ["G", "T", "opacity", "fringefit", "dd_gain"])
 def test_single_channel_entries_default_to_one_channel(key):
     assert get_spec(key).default_sizes["frequency"] == 1
@@ -188,8 +183,8 @@ def test_channel_resolved_entries_default_to_many_channels(key):
     assert get_spec(key).default_sizes["frequency"] == 64
 
 
-# "{nFreq=0}" on slide 6 and 7 means the axis is genuinely absent, which is
-# materially different from a length-one axis.
+# These types have no frequency dependence at all, so the axis is genuinely
+# absent — materially different from a length-one axis.
 @pytest.mark.parametrize("key", ["antpos", "ionosphere"])
 def test_frequency_independent_entries_have_no_frequency_axis(key):
     assert "frequency" not in get_spec(key).axes

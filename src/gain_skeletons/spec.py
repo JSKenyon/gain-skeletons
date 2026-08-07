@@ -8,8 +8,8 @@ calibration type.
 Both are frozen and validate on construction, so an invalid calibration type
 cannot be represented.
 
-The source deck runs two senses of "parameter" together, and this module keeps
-them apart under a single mechanism:
+"Parameter" carries two senses in calibration, and this module keeps them apart
+under a single mechanism:
 
 - Same-unit parameters within one quantity, such as the aligned and cross gains
   of a full Jones term, are one ParamSpec with several labels.
@@ -62,7 +62,7 @@ class ParamSpec:
         units: Units of the parameter. One parameter always has exactly one unit.
         axes: Axes over which the parameter is defined, in canonical order.
             Axes absent from this tuple are absent from the dataset entirely,
-            which is how the deck's brace notation is represented.
+            which is materially different from being present with length one.
         dtype: Numpy dtype name. Must be a complex or floating kind.
         labels: Values this parameter occupies along the parameter axis. None
             means a single label equal to name.
@@ -123,8 +123,8 @@ class CalSpec:
             omitted only when there is exactly one parameter, in which case
             that parameter's name is used.
         jones_structure: Which part of the Jones matrix the type populates, if
-            the deck specifies one. Describes the origin of the data, not an
-            instruction for its use.
+            it populates a well-defined part. Describes the origin of the data,
+            not an instruction for its use.
         description: Human-readable summary.
     """
 

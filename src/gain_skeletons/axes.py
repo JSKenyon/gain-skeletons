@@ -16,9 +16,9 @@ from collections.abc import Callable, Iterable, Sequence
 import numpy as np
 import xarray as xr
 
-# Canonical axis order, taken from the order in which the source deck lists
-# dimensions on slides 6 and 7. Every array this package builds orders its
-# dimensions this way, restricted to the axes actually present.
+# Canonical axis order, from slowest- to fastest-varying. Every array this
+# package builds orders its dimensions this way, restricted to the axes
+# actually present.
 CANONICAL_AXES = (
     "direction",
     "time",
@@ -162,9 +162,9 @@ def antenna_name_coord(size: int, *, prefix: str = "m") -> xr.DataArray:
 def direction_coord(size: int) -> xr.DataArray:
     """Build a direction coordinate.
 
-    Slide 8 of the source deck specifies indexed directions, so this is a plain
-    integer index rather than a sky position. The index is intended to be
-    resolved against a direction list held elsewhere.
+    Directions are indexed rather than positioned, so this is a plain integer
+    index rather than a sky coordinate. The index is intended to be resolved
+    against a direction list held elsewhere.
 
     Args:
         size: Number of directions.

@@ -14,7 +14,7 @@ source .venv/bin/activate
 python -m pytest
 
 # Single test.
-python -m pytest tests/test_registry.py::test_fringefit_parameters_match_deck -v
+python -m pytest tests/test_registry.py::test_fringefit_parameters_match_catalogue -v
 
 # Lint and format.
 ruff check . && ruff format .
@@ -32,8 +32,8 @@ would miss a real regression: the zarr read-side warning (see below) is a
 
 ## A calibration type is data, not code
 
-`registry.py` holds a dict of `CalSpec` objects, one per calibration type from the source
-deck. `builder.py` is a generic interpreter over any `CalSpec` — it has no branch for `G`
+`registry.py` holds a dict of `CalSpec` objects, one per calibration type.
+`builder.py` is a generic interpreter over any `CalSpec` — it has no branch for `G`
 versus `B` versus `fringefit`. Adding a calibration type means adding a `CalSpec` to
 `registry.py`; it should never require touching `builder.py`. If you find yourself editing
 a builder to special-case a new type, stop — the type belongs in the registry with the
@@ -51,8 +51,8 @@ by erroring.
 
 ## Axis presence versus axis extent
 
-The deck's brace notation distinguishes `{nFreq=0}` (axis absent) from `nFreq=1` (axis
-present, length one) — these are never interchangeable here. `ParamSpec.axes` declares
+An absent axis and an axis of length one are never interchangeable here.
+`ParamSpec.axes` declares
 which axes exist; `CalSpec.default_sizes` declares how long the sized ones (`direction`,
 `time`, `antenna_name`, `frequency`) default to. Never represent an absent axis as a
 length-one axis, and never assume a `default_sizes` entry implies presence — presence is
@@ -60,11 +60,11 @@ length-one axis, and never assume a `default_sizes` entry implies presence — p
 
 ## `tests/test_registry.py` duplicates `registry.py` on purpose
 
-Its expected-value tables are an independent transcription of slides 6 and 7, not a
-reflection of `registry.py`. This is deliberate, so the test checks the registry against
-the source deck rather than against itself — do not "simplify" it by importing or
-generating from `registry.py`. When the two disagree, the PDF is the tiebreaker, not
-`registry.py`.
+Its expected-value tables restate the catalogue independently rather than reflecting
+`registry.py`. That way the test checks the registry against a statement of intent rather
+than against itself, and changing a type's axes, units or dtype has to be a deliberate act
+in two places. Do not "simplify" it by importing or generating either table from the
+other.
 
 ## `FLAG` never carries `parameter_label`
 
@@ -81,14 +81,19 @@ warning, and omitting it on read triggers another — a `RuntimeWarning`, since 
 looking for metadata that was never written. There is deliberately no I/O wrapper around
 either call.
 
-## Source of truth
+## Why the consolidated layout exists
 
-George Moellenbrock, *Calibration Dataset Coordinate Dimensions* (2026-07-30), slides 6 and
-7, for the calibration type catalogue itself. The deck is deliberately not committed to
-this repository, so verifying the registry against it requires obtaining a copy.
-`docs/superpowers/specs/2026-08-06-gain-skeletons-design.md` for the design rationale,
-including where and why this implementation deliberately departs from the deck: the
-consolidated layout, which carries heterogeneous-unit parameters along one
-`parameter_label` axis where the deck stores each differently-united quantity in its own
-array, and the `FLAG` rule — one boolean flag per dataset, omitting `parameter_label` —
-which the deck never addresses at all, since it never mentions flags.
+The obvious layout gives each differently-united quantity its own array, so `units` stays a
+scalar attribute — that is `make_split_gain_xds`. The consolidated layout trades that for
+memory and disk locality: the parameters needed to evaluate one Jones term sit adjacent in
+one chunked array rather than scattered across several, and one `FLAG` describes one solve.
+The cost is a `parameter_units` coordinate instead of a scalar attribute, and redundant
+broadcasting when a type mixes polarised and unpolarised quantities — `fringefit`'s
+`DISP_DELAY` is the only case in the registry. Neither layout is the correct one; keep both
+working.
+
+## Scope
+
+Everything here is a demonstrator with random values. Nothing computes, applies, or
+validates calibration, and no dataset this package writes should be treated as a schema
+anyone has committed to. The registry is illustrative rather than exhaustive.

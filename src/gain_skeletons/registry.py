@@ -1,12 +1,14 @@
-"""The calibration type catalogue, transcribed from the source deck.
+"""The calibration type catalogue.
 
-Every entry corresponds to a line on slide 6 (direction-independent) or slide 7
-(direction-dependent) of George Moellenbrock's "Calibration Dataset Coordinate
-Dimensions" (2026-07-30). The deck itself is not committed to this repository.
+Ten representative calibration types, split into direction-independent entries
+and direction-dependent ones. The catalogue is illustrative rather than
+exhaustive: it exists to show the range of coordinate shapes such datasets take,
+and hand-written CalSpec objects work everywhere a registered one does.
 
-The deck's brace notation is represented by axis presence: "nFreq=1" is a
-frequency axis of length one, recorded in default_sizes, while "{nFreq=0}" is no
-frequency axis at all, recorded by its absence from the parameter's axes.
+Axis presence and axis extent are recorded separately. A frequency axis of
+length one is a frequency axis, recorded in default_sizes; a type with no
+frequency dependence at all has no frequency axis, recorded by its absence from
+the parameter's axes.
 
 Sizes here are defaults only, and every builder accepts overrides. They are kept
 small so that notebook output stays readable.
@@ -19,8 +21,8 @@ N_TIME = 4
 N_ANTENNA = 8
 N_DIRECTION = 3
 
-# A deliberately single-channel axis, versus a channel-resolved one. Slide 6
-# writes these "nFreq=1" and "nFreq=nCh" respectively.
+# A deliberately single-channel axis, versus a channel-resolved one: one
+# solution for the whole band, or one per channel.
 N_CHANNEL_ONE = 1
 N_CHANNEL_MANY = 64
 
@@ -29,8 +31,8 @@ _TIME_ANT = ("time", "antenna_name")
 _GAIN_AXES = (*_TIME_ANT, "frequency", "receptor_label")
 _UNPOL_AXES = (*_TIME_ANT, "frequency")
 
-# Slide 4 names the two columns of the Jones matrix the "aligned" and "cross"
-# gains, which is what the general J term's two parameters per receptor are.
+# The two columns of the Jones matrix are the "aligned" and "cross" gains, which
+# is what the general J term's two parameters per receptor are.
 _JONES_LABELS = ("aligned", "cross")
 
 
@@ -78,7 +80,7 @@ def _gain_spec(
     )
 
 
-# Slide 6: direction-independent calibration types.
+# Direction-independent calibration types.
 _J = _gain_spec(
     "J",
     jones_structure="full",
@@ -87,8 +89,8 @@ _J = _gain_spec(
     labels=_JONES_LABELS,
     description=(
         "General Jones term. Two complex gains per receptor, the aligned and cross "
-        "responses, so a parameter axis is required. The deck leaves its frequency "
-        "extent unspecified, so it defaults to channel-resolved."
+        "responses, so a parameter axis is required. Its frequency extent is "
+        "arbitrary, so it defaults to channel-resolved."
     ),
 )
 
@@ -158,9 +160,9 @@ _ANTPOS = CalSpec(
     ),
 )
 
-# Slide 6, Fringefit: the only entry with several quantities. Their units
-# differ, and DISP_DELAY is unpolarised while the other three are not, so the
-# two layouts genuinely diverge here.
+# Fringefit: the only entry with several quantities. Their units differ, and
+# DISP_DELAY is unpolarised while the other three are not, so the two layouts
+# genuinely diverge here.
 _FRINGEFIT = CalSpec(
     name="fringefit",
     parameters=(
@@ -184,7 +186,7 @@ _FRINGEFIT = CalSpec(
     ),
 )
 
-# Slide 7: direction-dependent calibration types.
+# Direction-dependent calibration types.
 _DD_GAIN = _gain_spec(
     "dd_gain",
     jones_structure="diagonal",
@@ -236,7 +238,7 @@ def list_cal_types() -> tuple[str, ...]:
     """List the registered calibration type names.
 
     Returns:
-        The registry keys, in the order the deck presents them.
+        The registry keys, direction-independent types first.
     """
     return tuple(REGISTRY)
 

@@ -1,11 +1,11 @@
 """Builders that turn a calibration type specification into a dataset.
 
-Two layouts are offered, and neither is privileged as the correct one. The
-source deck stores each differently-united quantity in its own data array, which
-:func:`make_split_gain_xds` reproduces. Consolidating every quantity into one
-array indexed by an explicit parameter axis, which :func:`make_gain_xds` does,
-keeps the parameters needed to evaluate a Jones term adjacent in memory and on
-disk, and lets a single flag describe a single solve.
+Two layouts are offered, and neither is privileged as the correct one.
+:func:`make_split_gain_xds` gives each differently-united quantity its own data
+array, so that units remain a scalar attribute. Consolidating every quantity
+into one array indexed by an explicit parameter axis, which
+:func:`make_gain_xds` does, keeps the parameters needed to evaluate a Jones term
+adjacent in memory and on disk, and lets a single flag describe a single solve.
 
 Nine of the ten registry entries declare one parameter, and for those the two
 builders produce identical datasets. The layouts diverge only for fringefit.
@@ -271,8 +271,8 @@ def _generate_flags(
 def _dataset_attrs(spec: CalSpec) -> dict[str, Any]:
     """Build the dataset-level attributes.
 
-    jones_structure is omitted rather than stored as null when the deck does not
-    specify one: a null attribute asserts that the calibration type has a Jones
+    jones_structure is omitted rather than stored as null when the calibration
+    type does not have one: a null attribute asserts that the type has a Jones
     structure whose value happens to be nothing.
 
     Args:
@@ -480,10 +480,9 @@ def make_split_gain_xds(
 ) -> dict[str, xr.Dataset]:
     """Build one calibration dataset per parameter.
 
-    This is the layout the source deck describes: each quantity lives in its own
-    data array so that units can be a scalar attribute, and each keeps only the
-    axes it is actually defined over. Nothing is broadcast, and no parameter is
-    padded out over an axis it does not need.
+    Each quantity lives in its own data array so that units can be a scalar
+    attribute, and each keeps only the axes it is actually defined over. Nothing
+    is broadcast, and no parameter is padded out over an axis it does not need.
 
     The cost is fragmentation. A calibration type whose quantities come from a
     single solve is spread over several datasets, each with its own flag.
