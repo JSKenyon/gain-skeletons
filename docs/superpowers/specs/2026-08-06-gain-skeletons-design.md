@@ -14,9 +14,8 @@ This is a demonstrator, not production software. All array values are randomly
 generated; nothing here computes or applies calibration.
 
 Source material: George Moellenbrock, *Calibration Dataset Coordinate Dimensions*,
-2026-07-30, archived at
-`docs/reference/calibration-dataset-coordinate-dimensions.pdf`. Slides 6 and 7 give the
-catalogue of calibration types that the registry transcribes.
+2026-07-30. Slides 6 and 7 give the catalogue of calibration types that the registry
+transcribes. The deck is not redistributed in this repository.
 
 ## Non-goals
 

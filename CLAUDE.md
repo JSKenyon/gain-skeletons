@@ -83,8 +83,9 @@ either call.
 
 ## Source of truth
 
-`docs/reference/calibration-dataset-coordinate-dimensions.pdf`, slides 6 and 7, for the
-calibration type catalogue itself.
+George Moellenbrock, *Calibration Dataset Coordinate Dimensions* (2026-07-30), slides 6 and
+7, for the calibration type catalogue itself. The deck is deliberately not committed to
+this repository, so verifying the registry against it requires obtaining a copy.
 `docs/superpowers/specs/2026-08-06-gain-skeletons-design.md` for the design rationale,
 including where and why this implementation deliberately departs from the deck: the
 consolidated layout, which carries heterogeneous-unit parameters along one

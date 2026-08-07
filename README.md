@@ -10,8 +10,9 @@ what such datasets look like on disk and how their coordinate axes behave, befor
 production schema is settled.
 
 The calibration types it builds are transcribed from George Moellenbrock's *Calibration
-Dataset Coordinate Dimensions* (2026-07-30), archived at
-[`docs/reference/calibration-dataset-coordinate-dimensions.pdf`](docs/reference/calibration-dataset-coordinate-dimensions.pdf).
+Dataset Coordinate Dimensions* (2026-07-30). That deck is not redistributed here; slides 6
+and 7 hold the catalogue, and you will need your own copy to check the transcription
+against.
 
 ## Install
 
@@ -91,9 +92,9 @@ python -m pytest
 
 ## Further reading
 
-- [`docs/reference/calibration-dataset-coordinate-dimensions.pdf`](docs/reference/calibration-dataset-coordinate-dimensions.pdf)
-  — the source deck; slides 6 and 7 catalogue the calibration types the registry
-  transcribes.
+- George Moellenbrock, *Calibration Dataset Coordinate Dimensions*, 2026-07-30 — the source
+  deck; slides 6 and 7 catalogue the calibration types the registry transcribes. Not
+  redistributed here.
 - [`notebooks/gain_skeletons_demo.ipynb`](notebooks/gain_skeletons_demo.ipynb) — a guided
   tour through the coordinate factories, several calibration types, both layouts side by
   side, and a zarr round-trip.

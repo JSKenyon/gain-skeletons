@@ -1,8 +1,8 @@
 """The calibration type catalogue, transcribed from the source deck.
 
 Every entry corresponds to a line on slide 6 (direction-independent) or slide 7
-(direction-dependent) of
-docs/reference/calibration-dataset-coordinate-dimensions.pdf.
+(direction-dependent) of George Moellenbrock's "Calibration Dataset Coordinate
+Dimensions" (2026-07-30). The deck itself is not committed to this repository.
 
 The deck's brace notation is represented by axis presence: "nFreq=1" is a
 frequency axis of length one, recorded in default_sizes, while "{nFreq=0}" is no

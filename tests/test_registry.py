@@ -1,7 +1,8 @@
 """Tests that the registry matches the source deck.
 
 The expected values below are transcribed independently from slides 6 and 7 of
-docs/reference/calibration-dataset-coordinate-dimensions.pdf. The duplication
+George Moellenbrock's "Calibration Dataset Coordinate Dimensions" (2026-07-30),
+which is not committed to this repository. The duplication
 against registry.py is deliberate: it checks the registry against the source
 material rather than against itself. Do not factor these tables together.
 

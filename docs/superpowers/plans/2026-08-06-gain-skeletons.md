@@ -8,7 +8,9 @@
 
 **Tech Stack:** Python 3.12, xarray 2026.7, zarr 3.3, numpy 2.5, pytest, ruff, jupyter.
 
-**Spec:** `docs/superpowers/specs/2026-08-06-gain-skeletons-design.md`. Read it before starting. Source material is `docs/reference/calibration-dataset-coordinate-dimensions.pdf` (slides 6 and 7 hold the catalogue).
+**Spec:** `docs/superpowers/specs/2026-08-06-gain-skeletons-design.md`. Read it before starting. Source material is George Moellenbrock's *Calibration Dataset Coordinate Dimensions* (2026-07-30), slides 6 and 7.
+
+> **Historical note.** This plan was written while the source deck was archived in the repository at `docs/reference/calibration-dataset-coordinate-dimensions.pdf`, and its task text refers to that path throughout. The deck was removed before publication and is not redistributed here, so those paths no longer resolve. The plan is kept as the implementation record; the delivered code, README and `CLAUDE.md` cite the deck by title instead.
 
 ## Global Constraints
 
