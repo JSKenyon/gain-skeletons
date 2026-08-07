@@ -226,19 +226,23 @@ def _broadcast_to_axes(
     return np.broadcast_to(reshaped, target_shape)
 
 
+#: Axes a flag never carries. A flag marks a whole solution bad, and these two
+#: axes index the components of one solution rather than distinct solutions: the
+#: quantities a single solve produced, and the receptors it solved together. If
+#: one component of a solution cannot be trusted, neither can the rest of it.
+UNFLAGGED_AXES = ("receptor_label", "parameter_label")
+
+
 def _flag_dims(dims: Sequence[str]) -> tuple[str, ...]:
     """Derive the flag dimensions for a parameter array.
-
-    A flag marks a whole solution bad, and the components of one solution are
-    not independently valid, so the parameter axis is dropped.
 
     Args:
         dims: Dimensions of the parameter array, in canonical order.
 
     Returns:
-        The same dimensions without parameter_label.
+        The same dimensions without the component axes (see UNFLAGGED_AXES).
     """
-    return tuple(dim for dim in dims if dim != "parameter_label")
+    return tuple(dim for dim in dims if dim not in UNFLAGGED_AXES)
 
 
 def _split_parameter_labels(spec: CalSpec) -> tuple[str, ...] | None:
@@ -617,8 +621,8 @@ def make_split_gain_xds(
         data_vars[param.name] = (param_axes, values, {"units": param.units})
 
     # One solve, one flag. Its dimensions span every axis some parameter uses,
-    # so a quantity defined over fewer of them — an unpolarised one, say — is
-    # still covered.
+    # less the component axes, so a quantity defined over fewer axes than its
+    # neighbours is still covered.
     flag_dims = _flag_dims(axes)
     flag_shape = tuple(coords[axis].size for axis in flag_dims)
     data_vars[FLAG_NAME] = (

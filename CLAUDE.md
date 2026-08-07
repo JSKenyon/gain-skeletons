@@ -66,13 +66,20 @@ than against itself, and changing a type's axes, units or dtype has to be a deli
 in two places. Do not "simplify" it by importing or generating either table from the
 other.
 
-## `FLAG` never carries `parameter_label`
+## `FLAG` never carries `parameter_label` or `receptor_label`
 
-A flag marks a whole solution bad; the components of one solution — `antenna_positions`'s
-`dX` versus its `dY`, or a `delay`'s offset versus its slope — are not independently valid.
+A flag marks a whole solution bad, and these two axes index the components of one solution
+rather than distinct solutions: the quantities one solve produced —
+`antenna_positions`'s `dX` versus its `dY`, or a `delay`'s offset versus its slope — and
+the receptors it solved together. If one component of a solution cannot be trusted, neither
+can the rest of it. The pair lives in `builder.UNFLAGGED_AXES`; `time`, `antenna_name`,
+`frequency` and `direction` index genuinely separate solutions and stay.
+
 There is exactly one `FLAG` per dataset in both layouts. Its dimensions are every axis some
-parameter uses, minus `parameter_label`, so a quantity defined over fewer axes than its
-neighbours is still covered.
+parameter uses, less the component axes, so a quantity defined over fewer axes than its
+neighbours is still covered. `tests/test_builder_consolidated.py` spells the expected
+dimensions out rather than deriving them from `UNFLAGGED_AXES`, so widening that tuple
+cannot quietly widen its own test.
 
 ## zarr specifics
 

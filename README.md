@@ -69,6 +69,20 @@ distinguishes components within a single parameter — `antenna_positions`' `dX`
 as it would for each of `fringe_fit`'s four quantities, the split layout drops it: the
 array name already carries that.
 
+## Flagging
+
+Every dataset carries one boolean `FLAG`, in both layouts. It never carries
+`parameter_label` or `receptor_label`, because those two index the components of a single
+solution rather than distinct solutions — the quantities one solve produced, and the
+receptors it solved together. A solution whose one component is untrustworthy is not a
+solution you can use the rest of. `time`, `antenna_name`, `frequency` and `direction` do
+index separate solutions, so `FLAG` keeps them:
+
+```python
+gs.make_gain_xds("bandpass").FLAG.dims
+# ('time', 'antenna_name', 'frequency')
+```
+
 ## The registry
 
 | Key | Conventional | dtype | Parameters | Direction-dependent | Notes |

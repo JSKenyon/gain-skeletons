@@ -60,17 +60,17 @@ def test_unpolarised_quantity_keeps_no_receptor_axis():
 
 
 # One solve, one flag, in this layout as in the consolidated one. The flag
-# spans every axis some parameter uses, so it still covers a quantity defined
-# over fewer of them.
+# spans every axis some parameter uses, less the component axes, so it still
+# covers a quantity defined over fewer of them.
 def test_one_flag_spans_every_axis_any_parameter_uses():
     xds = make_split_gain_xds("fringe_fit")
-    assert xds.FLAG.dims == ("time", "antenna_name", "frequency", "receptor_label")
+    assert xds.FLAG.dims == ("time", "antenna_name", "frequency")
     assert xds.FLAG.dtype == np.bool_
 
 
-def test_flag_drops_the_parameter_axis():
-    xds = make_split_gain_xds("antenna_positions")
-    assert xds.FLAG.dims == ("time", "antenna_name")
+def test_flag_carries_neither_component_axis():
+    assert make_split_gain_xds("antenna_positions").FLAG.dims == ("time", "antenna_name")
+    assert make_split_gain_xds("bandpass").FLAG.dims == ("time", "antenna_name", "frequency")
 
 
 def test_dataset_attributes_are_carried_through():

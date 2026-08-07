@@ -140,13 +140,18 @@ def test_coord_kwargs_accepted_for_configurable_axes(axis):
 
 
 # FLAG marks a whole solution bad. The components of one solution are not
-# independently valid, so FLAG never carries the parameter axis.
+# independently valid, so FLAG carries neither the parameter axis nor the
+# receptor axis: a solve's quantities, and the receptors it solved together,
+# stand or fall as one. The expected dims are spelled out rather than derived
+# from UNFLAGGED_AXES, so widening that tuple cannot quietly widen the test.
 @pytest.mark.parametrize("key", list_cal_types())
-def test_flag_dims_are_the_parameter_dims_without_the_parameter_axis(key):
+def test_flag_carries_neither_the_parameter_nor_the_receptor_axis(key):
     xds = make_gain_xds(key)
     spec = get_spec(key)
     parameter = xds[spec.resolved_consolidated_name]
-    expected = tuple(dim for dim in parameter.dims if dim != "parameter_label")
+    expected = tuple(
+        dim for dim in parameter.dims if dim not in ("parameter_label", "receptor_label")
+    )
     assert xds.FLAG.dims == expected
 
 
@@ -267,7 +272,7 @@ class TestFringeFitConsolidation:
 
     def test_one_flag_covers_the_whole_solve(self):
         xds = make_gain_xds("fringe_fit")
-        assert xds.FLAG.dims == ("time", "antenna_name", "frequency", "receptor_label")
+        assert xds.FLAG.dims == ("time", "antenna_name", "frequency")
 
 
 class TestDelayConsolidation:
@@ -308,7 +313,7 @@ class TestDelayConsolidation:
 
     def test_one_flag_covers_the_whole_solve(self):
         xds = make_gain_xds("delay")
-        assert xds.FLAG.dims == ("time", "antenna_name", "frequency", "receptor_label")
+        assert xds.FLAG.dims == ("time", "antenna_name", "frequency")
 
 
 # Restricted to the types whose parameters actually share a unit, so every
