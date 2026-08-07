@@ -22,7 +22,7 @@ uv pip install -e ".[dev,notebook]"
 ```python
 import gain_skeletons as gs
 
-xds = gs.make_gain_xds("B")
+xds = gs.make_gain_xds("bandpass")
 print(xds.GAIN.dims, xds.GAIN.shape, xds.GAIN.dtype)
 # ('time', 'antenna_name', 'frequency', 'receptor_label') (4, 8, 64, 2) complex64
 ```
@@ -48,34 +48,41 @@ one:
   evaluate a Jones term adjacent in memory and, once written, in one chunked zarr array
   rather than several, and lets a single `FLAG` describe a single solve. Putting a
   polarised and an unpolarised parameter into the same array means broadcasting the
-  unpolarised one redundantly over `receptor_label` — visible in `fringefit`, where
+  unpolarised one redundantly over `receptor_label` — visible in `fringe_fit`, where
   `DISP_DELAY` is broadcast this way.
 - **`make_split_gain_xds`** gives each parameter its own dataset, with its own exact axes
   and a scalar `units` attribute. Nothing is broadcast and no parameter is padded out over
   an axis it does not need. The cost is fragmentation: a calibration type produced by one
-  solve, such as `fringefit`, is spread over four datasets with four independent flags.
+  solve, such as `fringe_fit`, is spread over four datasets with four independent flags.
 
 For the nine calibration types with a single parameter, the two functions produce
-identical datasets — `tests/test_builder_split.py` pins this. The layouts diverge only for
-`fringefit`, the one type with several differently-united parameters.
+identical datasets — `tests/test_builder_split.py` pins this. The layouts diverge for
+`delay` and `fringe_fit`, the two types with several differently-united parameters, and
+only `fringe_fit` pays the broadcasting cost, since both of `delay`'s parameters are
+polarised.
 
 ## The registry
 
-| Key | dtype | Parameters | Direction-dependent | Notes |
-| --- | --- | --- | --- | --- |
-| `J` | complex64 | `GAIN` (rel), labels: aligned, cross | no | full Jones; channel-resolved |
-| `G` | complex64 | `GAIN` (rel) | no | on-diagonal only; single channel |
-| `T` | complex64 | `GAIN` (rel) | no | scalar, unpolarised; single channel |
-| `opacity` | float64 | `OPAC` (nepers) | no | unpolarised; single channel |
-| `B` | complex64 | `GAIN` (rel) | no | on-diagonal only; channel-resolved |
-| `D` | complex64 | `GAIN` (rel) | no | off-diagonal only; channel-resolved |
-| `antpos` | float64 | `ANTENNA_POSITION_OFFSET` (m), labels: dX, dY, dZ | no | no frequency or receptor axis |
-| `fringefit` | float64 | `PHASE` (deg), `DELAY` (s), `RATE` (s/s), `DISP_DELAY` (s, unpolarised) | no | the only multi-parameter entry |
-| `dd_gain` | complex64 | `GAIN` (rel) | yes | on-diagonal only; single channel |
-| `ionosphere` | float64 | `TEC` (TECU) | yes | no frequency or receptor axis |
+| Key | Conventional | dtype | Parameters | Direction-dependent | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `phenomenological_gain` | `J` | complex64 | `GAIN` (rel), labels: aligned, cross | no | full Jones; channel-resolved |
+| `antenna_gain` | `G` | complex64 | `GAIN` (rel) | no | on-diagonal only; single channel |
+| `tropospheric_gain` | `T` | complex64 | `GAIN` (rel) | no | scalar, unpolarised; single channel |
+| `opacity` | | float64 | `OPAC` (nepers) | no | unpolarised; single channel |
+| `bandpass` | `B` | complex64 | `GAIN` (rel) | no | on-diagonal only; channel-resolved |
+| `leakage` | `D` | complex64 | `GAIN` (rel) | no | off-diagonal only; channel-resolved |
+| `delay` | `K` | float64 | `PHASE` (deg), `DELAY` (s) | no | multi-parameter; both polarised |
+| `antenna_positions` | | float64 | `ANTENNA_POSITION_OFFSET` (m), labels: dX, dY, dZ | no | no frequency or receptor axis |
+| `fringe_fit` | | float64 | `PHASE` (deg), `DELAY` (s), `RATE` (s/s), `DISP_DELAY` (s, unpolarised) | no | multi-parameter; mixes polarised and unpolarised |
+| `dd_phenomenological_gain` | | complex64 | `GAIN` (rel), labels: aligned, cross | yes | full Jones; single channel |
+| `ionosphere` | | float64 | `TEC` (TECU) | yes | no frequency or receptor axis |
+
+Keys are spelled out rather than abbreviated, since the conventional single letters carry
+their meaning only by convention. The second column gives the letter where one is in
+common use, for anyone arriving from CASA or AIPS; it is not accepted as a key.
 
 The catalogue is illustrative, not exhaustive — it covers the range of coordinate shapes
-these datasets take. Look up any entry with `gs.get_spec("fringefit")`, or list all keys
+these datasets take. Look up any entry with `gs.get_spec("fringe_fit")`, or list all keys
 with `gs.list_cal_types()`. A hand-written `CalSpec` works everywhere a registered one
 does, so a type the registry does not carry needs no change to the package.
 

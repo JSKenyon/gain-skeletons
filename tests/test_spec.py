@@ -64,7 +64,7 @@ def test_param_spec_rejects_unsupported_dtype():
 
 def test_cal_spec_axes_is_the_union_in_canonical_order():
     spec = CalSpec(
-        name="fringefit",
+        name="fringe_fit",
         parameters=(
             ParamSpec("PHASE", "deg", ("time", "receptor_label", "parameter_label"), "float64"),
             ParamSpec("DISP_DELAY", "s", ("time", "parameter_label"), "float64"),
@@ -77,7 +77,7 @@ def test_cal_spec_axes_is_the_union_in_canonical_order():
 
 def test_cal_spec_all_labels_concatenates_in_declaration_order():
     spec = CalSpec(
-        name="fringefit",
+        name="fringe_fit",
         parameters=(
             ParamSpec("PHASE", "deg", ("time", "parameter_label"), "float64"),
             ParamSpec("DELAY", "s", ("time", "parameter_label"), "float64"),
@@ -94,14 +94,14 @@ GAIN_SIZES = {"time": 4, "antenna_name": 8, "frequency": 1}
 
 
 def test_cal_spec_consolidated_name_defaults_to_the_sole_parameter():
-    spec = CalSpec(name="G", parameters=(make_gain_param(),), default_sizes=GAIN_SIZES)
+    spec = CalSpec(name="antenna_gain", parameters=(make_gain_param(),), default_sizes=GAIN_SIZES)
     assert spec.resolved_consolidated_name == "GAIN"
 
 
 def test_cal_spec_requires_consolidated_name_when_multi_parameter():
     with pytest.raises(ValueError, match="consolidated_name"):
         CalSpec(
-            name="fringefit",
+            name="fringe_fit",
             parameters=(
                 ParamSpec("PHASE", "deg", ("time",), "float64"),
                 ParamSpec("DELAY", "s", ("time",), "float64"),
@@ -112,7 +112,7 @@ def test_cal_spec_requires_consolidated_name_when_multi_parameter():
 
 def test_cal_spec_reports_uniform_units():
     spec = CalSpec(
-        name="antpos",
+        name="antenna_positions",
         parameters=(
             ParamSpec(
                 "ANTENNA_POSITION_OFFSET",
@@ -129,7 +129,7 @@ def test_cal_spec_reports_uniform_units():
 
 def test_cal_spec_reports_heterogeneous_units_as_none():
     spec = CalSpec(
-        name="fringefit",
+        name="fringe_fit",
         parameters=(
             ParamSpec("PHASE", "deg", ("time", "parameter_label"), "float64"),
             ParamSpec("DELAY", "s", ("time", "parameter_label"), "float64"),
@@ -155,9 +155,9 @@ def test_cal_spec_reports_heterogeneous_dtype_as_none():
 
 
 def test_cal_spec_direction_dependent_follows_the_direction_axis():
-    di = CalSpec(name="G", parameters=(make_gain_param(),), default_sizes=GAIN_SIZES)
+    di = CalSpec(name="antenna_gain", parameters=(make_gain_param(),), default_sizes=GAIN_SIZES)
     dd = CalSpec(
-        name="dd_gain",
+        name="dd_phenomenological_gain",
         parameters=(make_gain_param(axes=("direction", "time", "antenna_name")),),
         default_sizes={"direction": 3, "time": 4, "antenna_name": 8},
     )
@@ -188,7 +188,7 @@ def test_cal_spec_rejects_no_parameters():
 def test_cal_spec_rejects_default_size_for_absent_axis():
     with pytest.raises(ValueError, match="not an axis of"):
         CalSpec(
-            name="G",
+            name="antenna_gain",
             parameters=(make_gain_param(axes=("time", "antenna_name")),),
             default_sizes={"time": 4, "frequency": 64},
         )
@@ -197,7 +197,7 @@ def test_cal_spec_rejects_default_size_for_absent_axis():
 def test_cal_spec_rejects_default_size_for_label_axis():
     with pytest.raises(ValueError, match="never configurable"):
         CalSpec(
-            name="G",
+            name="antenna_gain",
             parameters=(make_gain_param(),),
             default_sizes={"time": 4, "receptor_label": 2},
         )
@@ -206,7 +206,7 @@ def test_cal_spec_rejects_default_size_for_label_axis():
 def test_cal_spec_requires_default_size_for_every_sized_axis():
     with pytest.raises(ValueError, match="missing default size"):
         CalSpec(
-            name="G",
+            name="antenna_gain",
             parameters=(make_gain_param(axes=("time", "antenna_name")),),
             default_sizes={"time": 4},
         )
@@ -214,7 +214,7 @@ def test_cal_spec_requires_default_size_for_every_sized_axis():
 
 def test_default_sizes_cannot_be_mutated_after_construction():
     sizes = {"time": 4, "antenna_name": 8, "frequency": 1}
-    spec = CalSpec(name="G", parameters=(make_gain_param(),), default_sizes=sizes)
+    spec = CalSpec(name="antenna_gain", parameters=(make_gain_param(),), default_sizes=sizes)
     with pytest.raises(TypeError):
         spec.default_sizes["frequency"] = 999
     assert spec.default_sizes["frequency"] == 1
@@ -223,6 +223,6 @@ def test_default_sizes_cannot_be_mutated_after_construction():
 # The snapshot must also be insulated from later edits to the caller's dict.
 def test_default_sizes_snapshot_is_independent_of_caller_dict():
     sizes = {"time": 4, "antenna_name": 8, "frequency": 1}
-    spec = CalSpec(name="G", parameters=(make_gain_param(),), default_sizes=sizes)
+    spec = CalSpec(name="antenna_gain", parameters=(make_gain_param(),), default_sizes=sizes)
     sizes["frequency"] = 999
     assert spec.default_sizes["frequency"] == 1

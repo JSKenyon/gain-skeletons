@@ -21,7 +21,7 @@ DIRECTION_INDEPENDENT_CASES = [
     # General Jones term: complex, channel-resolved, polarised, and carrying two
     # gains per receptor on the parameter axis.
     (
-        "J",
+        "phenomenological_gain",
         (*TIME_ANT, "frequency", "receptor_label", "parameter_label"),
         "GAIN",
         "rel",
@@ -31,7 +31,7 @@ DIRECTION_INDEPENDENT_CASES = [
     ),
     # Standard electronic gain: complex, one solution per band, on-diagonal only.
     (
-        "G",
+        "antenna_gain",
         (*TIME_ANT, "frequency", "receptor_label"),
         "GAIN",
         "rel",
@@ -41,7 +41,7 @@ DIRECTION_INDEPENDENT_CASES = [
     ),
     # Tropospheric gain: complex and scalar, so unpolarised — no receptor axis.
     (
-        "T",
+        "tropospheric_gain",
         (*TIME_ANT, "frequency"),
         "GAIN",
         "rel",
@@ -59,9 +59,10 @@ DIRECTION_INDEPENDENT_CASES = [
         ("OPAC",),
         None,
     ),
-    # Bandpass: as G but resolved per channel rather than one solution per band.
+    # Bandpass: as antenna_gain but resolved per channel rather than one
+    # solution per band.
     (
-        "B",
+        "bandpass",
         (*TIME_ANT, "frequency", "receptor_label"),
         "GAIN",
         "rel",
@@ -71,7 +72,7 @@ DIRECTION_INDEPENDENT_CASES = [
     ),
     # Polarisation leakage: channel-resolved, and off-diagonal rather than on.
     (
-        "D",
+        "leakage",
         (*TIME_ANT, "frequency", "receptor_label"),
         "GAIN",
         "rel",
@@ -82,7 +83,7 @@ DIRECTION_INDEPENDENT_CASES = [
     # Antenna position offset: three same-unit components on the parameter axis,
     # with neither frequency nor polarisation dependence.
     (
-        "antpos",
+        "antenna_positions",
         (*TIME_ANT, "parameter_label"),
         "ANTENNA_POSITION_OFFSET",
         "m",
@@ -94,15 +95,17 @@ DIRECTION_INDEPENDENT_CASES = [
 
 # (key, axes, parameter name, units, dtype, labels, jones_structure)
 DIRECTION_DEPENDENT_CASES = [
-    # Generic direction-dependent gain: G with a leading direction axis.
+    # Direction-dependent general Jones term: phenomenological_gain with a
+    # leading direction axis, and single-channel by default rather than
+    # channel-resolved.
     (
-        "dd_gain",
-        ("direction", *TIME_ANT, "frequency", "receptor_label"),
+        "dd_phenomenological_gain",
+        ("direction", *TIME_ANT, "frequency", "receptor_label", "parameter_label"),
         "GAIN",
         "rel",
         "complex64",
-        ("GAIN",),
-        "diagonal",
+        ("aligned", "cross"),
+        "full",
     ),
     # Ionospheric TEC: direction-dependent, but neither frequency- nor
     # polarisation-dependent, so both of those axes are absent.
@@ -111,20 +114,26 @@ DIRECTION_DEPENDENT_CASES = [
 
 SINGLE_PARAMETER_CASES = DIRECTION_INDEPENDENT_CASES + DIRECTION_DEPENDENT_CASES
 
-# Fringefit is the only multi-parameter entry: four real quantities with
-# differing units, of which DISP_DELAY alone is unpolarised.
+# Two entries hold several quantities. Delay holds the two parameters of a phase
+# ramp, both polarised. Fringe fit holds four, of which DISP_DELAY alone is
+# unpolarised — the catalogue's only mix of the two.
 POLARISED = (*TIME_ANT, "frequency", "receptor_label", "parameter_label")
 UNPOLARISED = (*TIME_ANT, "frequency", "parameter_label")
-FRINGEFIT_PARAMETERS = [
+DELAY_PARAMETERS = [
+    ("PHASE", "deg", POLARISED),
+    ("DELAY", "s", POLARISED),
+]
+FRINGE_FIT_PARAMETERS = [
     ("PHASE", "deg", POLARISED),
     ("DELAY", "s", POLARISED),
     ("RATE", "s/s", POLARISED),
     ("DISP_DELAY", "s", UNPOLARISED),
 ]
+MULTI_PARAMETER_KEYS = {"delay", "fringe_fit"}
 
 
 def test_registry_has_exactly_the_catalogue_entries():
-    expected = {key for key, *_ in SINGLE_PARAMETER_CASES} | {"fringefit"}
+    expected = {key for key, *_ in SINGLE_PARAMETER_CASES} | MULTI_PARAMETER_KEYS
     assert set(REGISTRY) == expected
 
 
@@ -152,55 +161,99 @@ def test_single_parameter_entry_matches_catalogue(
     assert spec.jones_structure == jones_structure
 
 
-def test_fringefit_parameters_match_catalogue():
-    spec = get_spec("fringefit")
+def test_delay_parameters_match_catalogue():
+    spec = get_spec("delay")
     actual = [(param.name, param.units, param.axes) for param in spec.parameters]
-    assert actual == FRINGEFIT_PARAMETERS
+    assert actual == DELAY_PARAMETERS
 
 
-def test_fringefit_is_the_only_multi_parameter_entry():
+def test_fringe_fit_parameters_match_catalogue():
+    spec = get_spec("fringe_fit")
+    actual = [(param.name, param.units, param.axes) for param in spec.parameters]
+    assert actual == FRINGE_FIT_PARAMETERS
+
+
+def test_delay_and_fringe_fit_are_the_only_multi_parameter_entries():
     multi = {key for key, spec in REGISTRY.items() if len(spec.parameters) > 1}
-    assert multi == {"fringefit"}
+    assert multi == MULTI_PARAMETER_KEYS
 
 
-def test_fringefit_consolidated_labels_are_the_quantity_names():
-    assert get_spec("fringefit").all_labels == ("PHASE", "DELAY", "RATE", "DISP_DELAY")
+# Delay is multi-parameter but wholly polarised, so fringe fit remains the only
+# entry where consolidating forces a quantity to be broadcast over receptors.
+def test_fringe_fit_is_the_only_entry_mixing_polarised_and_unpolarised():
+    mixed = {
+        key
+        for key, spec in REGISTRY.items()
+        if len({"receptor_label" in param.axes for param in spec.parameters}) > 1
+    }
+    assert mixed == {"fringe_fit"}
 
 
-def test_fringefit_units_are_heterogeneous():
-    assert get_spec("fringefit").uniform_units is None
+def test_fringe_fit_consolidated_labels_are_the_quantity_names():
+    assert get_spec("fringe_fit").all_labels == ("PHASE", "DELAY", "RATE", "DISP_DELAY")
 
 
-# G, T, opacity and every fringefit quantity are single-channel, while B and D
-# are channel-resolved. That distinction lives in default_sizes.
-@pytest.mark.parametrize("key", ["G", "T", "opacity", "fringefit", "dd_gain"])
+@pytest.mark.parametrize("key", ["delay", "fringe_fit"])
+def test_multi_parameter_entries_have_heterogeneous_units(key):
+    assert get_spec(key).uniform_units is None
+
+
+# Several entries solve once per band, while bandpass, leakage and the general
+# Jones term resolve every channel. That distinction lives in default_sizes.
+@pytest.mark.parametrize(
+    "key",
+    [
+        "antenna_gain",
+        "tropospheric_gain",
+        "opacity",
+        "delay",
+        "fringe_fit",
+        "dd_phenomenological_gain",
+    ],
+)
 def test_single_channel_entries_default_to_one_channel(key):
     assert get_spec(key).default_sizes["frequency"] == 1
 
 
-@pytest.mark.parametrize("key", ["B", "D", "J"])
+@pytest.mark.parametrize("key", ["bandpass", "leakage", "phenomenological_gain"])
 def test_channel_resolved_entries_default_to_many_channels(key):
     assert get_spec(key).default_sizes["frequency"] == 64
 
 
 # These types have no frequency dependence at all, so the axis is genuinely
 # absent — materially different from a length-one axis.
-@pytest.mark.parametrize("key", ["antpos", "ionosphere"])
+@pytest.mark.parametrize("key", ["antenna_positions", "ionosphere"])
 def test_frequency_independent_entries_have_no_frequency_axis(key):
     assert "frequency" not in get_spec(key).axes
 
 
-@pytest.mark.parametrize("key", ["T", "opacity", "antpos", "ionosphere"])
+@pytest.mark.parametrize(
+    "key",
+    ["tropospheric_gain", "opacity", "antenna_positions", "ionosphere"],
+)
 def test_unpolarised_entries_have_no_receptor_axis(key):
     assert "receptor_label" not in get_spec(key).axes
 
 
-@pytest.mark.parametrize("key", ["dd_gain", "ionosphere"])
+@pytest.mark.parametrize("key", ["dd_phenomenological_gain", "ionosphere"])
 def test_direction_dependent_entries_are_flagged(key):
     assert get_spec(key).direction_dependent is True
 
 
-@pytest.mark.parametrize("key", ["J", "G", "T", "opacity", "B", "D", "antpos", "fringefit"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        "phenomenological_gain",
+        "antenna_gain",
+        "tropospheric_gain",
+        "opacity",
+        "bandpass",
+        "leakage",
+        "delay",
+        "antenna_positions",
+        "fringe_fit",
+    ],
+)
 def test_direction_independent_entries_are_flagged(key):
     assert get_spec(key).direction_dependent is False
 

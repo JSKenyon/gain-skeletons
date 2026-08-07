@@ -45,21 +45,21 @@ def test_split_layout_survives_roundtrip(key, tmp_path):
 # Complex gains are the case most likely to be mangled by a storage layer, so
 # it gets its own assertion rather than relying on identical() alone.
 def test_complex_dtype_is_preserved_exactly(tmp_path):
-    xds = make_gain_xds("B")
+    xds = make_gain_xds("bandpass")
     read = roundtrip(xds, tmp_path / "b.zarr")
     assert read.GAIN.dtype == np.complex64
     np.testing.assert_array_equal(read.GAIN.values, xds.GAIN.values)
 
 
 def test_boolean_flags_are_preserved(tmp_path):
-    xds = make_gain_xds("B", flag_fraction=0.5)
+    xds = make_gain_xds("bandpass", flag_fraction=0.5)
     read = roundtrip(xds, tmp_path / "b.zarr")
     assert read.FLAG.dtype == np.bool_
     np.testing.assert_array_equal(read.FLAG.values, xds.FLAG.values)
 
 
 def test_string_coordinates_are_preserved(tmp_path):
-    xds = make_gain_xds("B")
+    xds = make_gain_xds("bandpass")
     read = roundtrip(xds, tmp_path / "b.zarr")
     assert list(read.antenna_name.values) == list(xds.antenna_name.values)
     assert list(read.receptor_label.values) == list(xds.receptor_label.values)
@@ -68,32 +68,32 @@ def test_string_coordinates_are_preserved(tmp_path):
 # parameter_units is a non-dimension coordinate, which is the part of the
 # consolidated layout most at risk of being demoted to a data variable.
 def test_parameter_units_survives_as_a_coordinate(tmp_path):
-    xds = make_gain_xds("fringefit")
-    read = roundtrip(xds, tmp_path / "fringefit.zarr")
+    xds = make_gain_xds("fringe_fit")
+    read = roundtrip(xds, tmp_path / "fringe_fit.zarr")
     assert "parameter_units" in read.coords
     assert list(read.parameter_units.values) == ["deg", "s", "s/s", "s"]
 
 
 def test_coordinate_attributes_are_preserved(tmp_path):
-    xds = make_gain_xds("B")
+    xds = make_gain_xds("bandpass")
     read = roundtrip(xds, tmp_path / "b.zarr")
     assert read.time.attrs["type"] == "time"
     assert read.frequency.attrs["units"] == "Hz"
 
 
 def test_dataset_and_variable_attributes_are_preserved(tmp_path):
-    xds = make_gain_xds("dd_gain")
+    xds = make_gain_xds("dd_phenomenological_gain")
     read = roundtrip(xds, tmp_path / "dd.zarr")
-    assert read.attrs["cal_type"] == "dd_gain"
+    assert read.attrs["cal_type"] == "dd_phenomenological_gain"
     assert read.attrs["direction_dependent"] is True
-    assert read.attrs["jones_structure"] == "diagonal"
+    assert read.attrs["jones_structure"] == "full"
     assert read.GAIN.attrs["units"] == "rel"
 
 
 # The layouts differ on disk as well as in memory: one chunked array against
 # four separate stores. This is the difference the notebook exists to show.
 def test_consolidated_stores_one_array_where_split_stores_four(tmp_path):
-    consolidated = make_gain_xds("fringefit")
+    consolidated = make_gain_xds("fringe_fit")
     path = tmp_path / "consolidated.zarr"
     consolidated.to_zarr(path, consolidated=False)
 
@@ -106,7 +106,7 @@ def test_consolidated_stores_one_array_where_split_stores_four(tmp_path):
     # The point of consolidating: ONE parameter array, not four.
     assert set(consolidated.data_vars) == {"PARAMETER", "FLAG"}
 
-    split = make_split_gain_xds("fringefit")
+    split = make_split_gain_xds("fringe_fit")
     assert len(split) == 4
     for name, xds in split.items():
         store = tmp_path / f"split_{name}.zarr"

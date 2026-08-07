@@ -14,7 +14,7 @@ source .venv/bin/activate
 python -m pytest
 
 # Single test.
-python -m pytest tests/test_registry.py::test_fringefit_parameters_match_catalogue -v
+python -m pytest tests/test_registry.py::test_fringe_fit_parameters_match_catalogue -v
 
 # Lint and format.
 ruff check . && ruff format .
@@ -33,8 +33,8 @@ would miss a real regression: the zarr read-side warning (see below) is a
 ## A calibration type is data, not code
 
 `registry.py` holds a dict of `CalSpec` objects, one per calibration type.
-`builder.py` is a generic interpreter over any `CalSpec` — it has no branch for `G`
-versus `B` versus `fringefit`. Adding a calibration type means adding a `CalSpec` to
+`builder.py` is a generic interpreter over any `CalSpec` — it has no branch for
+`antenna_gain` versus `bandpass` versus `fringe_fit`. Adding a calibration type means adding a `CalSpec` to
 `registry.py`; it should never require touching `builder.py`. If you find yourself editing
 a builder to special-case a new type, stop — the type belongs in the registry with the
 right axes and `default_sizes`, not as a new code path.
@@ -42,7 +42,7 @@ right axes and `default_sizes`, not as a new code path.
 ## Two layouts, one spec
 
 `make_gain_xds` and `make_split_gain_xds` both consume the same `CalSpec`. They agree
-exactly for the nine calibration types with a single parameter, and
+exactly for the nine of eleven calibration types with a single parameter, and
 `tests/test_builder_split.py` pins that agreement with `xds.identical()`. Preserving it
 depends on both builders drawing parameter values, and then flags, from an identically
 seeded `numpy.random.default_rng` in the same order — reorder that draw sequence in one
@@ -68,8 +68,8 @@ other.
 
 ## `FLAG` never carries `parameter_label`
 
-A flag marks a whole solution bad; the components of one solution — `antpos`'s `dX` versus
-its `dY`, or one Fringefit quantity versus another within the same dataset — are not
+A flag marks a whole solution bad; the components of one solution — `antenna_positions`'s
+`dX` versus its `dY`, or a `delay`'s offset versus its slope — are not
 independently valid. `FLAG`'s dimensions are always the parameter array's dimensions minus
 `parameter_label`, in both layouts.
 
@@ -88,8 +88,9 @@ scalar attribute — that is `make_split_gain_xds`. The consolidated layout trad
 memory and disk locality: the parameters needed to evaluate one Jones term sit adjacent in
 one chunked array rather than scattered across several, and one `FLAG` describes one solve.
 The cost is a `parameter_units` coordinate instead of a scalar attribute, and redundant
-broadcasting when a type mixes polarised and unpolarised quantities — `fringefit`'s
-`DISP_DELAY` is the only case in the registry. Neither layout is the correct one; keep both
+broadcasting when a type mixes polarised and unpolarised quantities — `fringe_fit`'s
+`DISP_DELAY` is the only case in the registry. `delay` is multi-parameter without that
+cost, since both of its quantities are polarised. Neither layout is the correct one; keep both
 working.
 
 ## Scope

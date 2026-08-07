@@ -7,8 +7,9 @@ into one array indexed by an explicit parameter axis, which
 :func:`make_gain_xds` does, keeps the parameters needed to evaluate a Jones term
 adjacent in memory and on disk, and lets a single flag describe a single solve.
 
-Nine of the ten registry entries declare one parameter, and for those the two
-builders produce identical datasets. The layouts diverge only for fringefit.
+Nine of the eleven registry entries declare one parameter, and for those the two
+builders produce identical datasets. The layouts diverge only for delay and
+fringe_fit.
 
 All values are random. Complex parameters are generated near unit amplitude,
 since a uniform-random complex gain of arbitrary magnitude would be physically
@@ -487,7 +488,7 @@ def make_split_gain_xds(
     The cost is fragmentation. A calibration type whose quantities come from a
     single solve is spread over several datasets, each with its own flag.
 
-    For a calibration type with one parameter, which is nine of the ten
+    For a calibration type with one parameter, which is nine of the eleven
     registered types, this returns a single dataset identical to the one
     :func:`make_gain_xds` produces, because the consolidated array then takes
     its name from that sole parameter. The equivalence breaks if the spec

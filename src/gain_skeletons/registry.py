@@ -1,7 +1,7 @@
 """The calibration type catalogue.
 
-Ten representative calibration types, split into direction-independent entries
-and direction-dependent ones. The catalogue is illustrative rather than
+Eleven representative calibration types, split into direction-independent
+entries and direction-dependent ones. The catalogue is illustrative rather than
 exhaustive: it exists to show the range of coordinate shapes such datasets take,
 and hand-written CalSpec objects work everywhere a registered one does.
 
@@ -32,7 +32,7 @@ _GAIN_AXES = (*_TIME_ANT, "frequency", "receptor_label")
 _UNPOL_AXES = (*_TIME_ANT, "frequency")
 
 # The two columns of the Jones matrix are the "aligned" and "cross" gains, which
-# is what the general J term's two parameters per receptor are.
+# is what a phenomenological term's two parameters per receptor are.
 _JONES_LABELS = ("aligned", "cross")
 
 
@@ -81,28 +81,29 @@ def _gain_spec(
 
 
 # Direction-independent calibration types.
-_J = _gain_spec(
-    "J",
+_PHENOMENOLOGICAL_GAIN = _gain_spec(
+    "phenomenological_gain",
     jones_structure="full",
     n_frequency=N_CHANNEL_MANY,
     axes=(*_GAIN_AXES, "parameter_label"),
     labels=_JONES_LABELS,
     description=(
-        "General Jones term. Two complex gains per receptor, the aligned and cross "
+        "General Jones term, describing the response without attributing it to a "
+        "physical cause. Two complex gains per receptor, the aligned and cross "
         "responses, so a parameter axis is required. Its frequency extent is "
         "arbitrary, so it defaults to channel-resolved."
     ),
 )
 
-_G = _gain_spec(
-    "G",
+_ANTENNA_GAIN = _gain_spec(
+    "antenna_gain",
     jones_structure="diagonal",
     n_frequency=N_CHANNEL_ONE,
     description="Standard electronic gain, on-diagonal only, one solution per band.",
 )
 
-_T = _gain_spec(
-    "T",
+_TROPOSPHERIC_GAIN = _gain_spec(
+    "tropospheric_gain",
     jones_structure="scalar",
     n_frequency=N_CHANNEL_ONE,
     axes=_UNPOL_AXES,
@@ -111,15 +112,15 @@ _T = _gain_spec(
     ),
 )
 
-_B = _gain_spec(
-    "B",
+_BANDPASS = _gain_spec(
+    "bandpass",
     jones_structure="diagonal",
     n_frequency=N_CHANNEL_MANY,
     description="Standard bandpass, on-diagonal only, resolved in frequency.",
 )
 
-_D = _gain_spec(
-    "D",
+_LEAKAGE = _gain_spec(
+    "leakage",
     jones_structure="off-diagonal",
     n_frequency=N_CHANNEL_MANY,
     description="Standard polarisation leakage, off-diagonal only, resolved in frequency.",
@@ -140,8 +141,27 @@ _OPACITY = CalSpec(
     description="Atmospheric opacity. Unpolarised, so it carries no receptor axis.",
 )
 
-_ANTPOS = CalSpec(
-    name="antpos",
+# Delay: a linear phase ramp across frequency, stored as the parameters of that
+# ramp rather than sampled channel by channel. Like fringe_fit it holds several
+# differently-united quantities, but both of them are polarised, so nothing has
+# to be broadcast when they share one array.
+_DELAY = CalSpec(
+    name="delay",
+    parameters=(
+        ParamSpec("PHASE", "deg", (*_GAIN_AXES, "parameter_label"), "float64", scale=30.0),
+        ParamSpec("DELAY", "s", (*_GAIN_AXES, "parameter_label"), "float64", scale=1.0e-9),
+    ),
+    default_sizes={"time": N_TIME, "antenna_name": N_ANTENNA, "frequency": N_CHANNEL_ONE},
+    consolidated_name="PARAMETER",
+    description=(
+        "Delay. A phase offset and a slope in seconds per receptor, which together "
+        "parameterise a phase ramp across frequency. The frequency axis is present "
+        "but single-channel: one ramp is solved per band, not per channel."
+    ),
+)
+
+_ANTENNA_POSITIONS = CalSpec(
+    name="antenna_positions",
     parameters=(
         ParamSpec(
             name="ANTENNA_POSITION_OFFSET",
@@ -160,11 +180,11 @@ _ANTPOS = CalSpec(
     ),
 )
 
-# Fringefit: the only entry with several quantities. Their units differ, and
-# DISP_DELAY is unpolarised while the other three are not, so the two layouts
-# genuinely diverge here.
-_FRINGEFIT = CalSpec(
-    name="fringefit",
+# Fringe fit: the only entry that mixes polarised and unpolarised quantities.
+# DISP_DELAY carries no receptor axis while the other three do, so consolidating
+# has to broadcast it — the one place in the catalogue where that cost shows.
+_FRINGE_FIT = CalSpec(
+    name="fringe_fit",
     parameters=(
         ParamSpec("PHASE", "deg", (*_GAIN_AXES, "parameter_label"), "float64", scale=30.0),
         ParamSpec("DELAY", "s", (*_GAIN_AXES, "parameter_label"), "float64", scale=1.0e-9),
@@ -187,15 +207,18 @@ _FRINGEFIT = CalSpec(
 )
 
 # Direction-dependent calibration types.
-_DD_GAIN = _gain_spec(
-    "dd_gain",
-    jones_structure="diagonal",
+_DD_PHENOMENOLOGICAL_GAIN = _gain_spec(
+    "dd_phenomenological_gain",
+    jones_structure="full",
     n_frequency=N_CHANNEL_ONE,
-    axes=("direction", *_GAIN_AXES),
+    axes=("direction", *_GAIN_AXES, "parameter_label"),
+    labels=_JONES_LABELS,
     n_direction=N_DIRECTION,
     description=(
-        "Generic direction-dependent gain, on-diagonal only. The direction axis "
-        "indexes facets within a single field of view."
+        "Direction-dependent general Jones term. The same aligned and cross gains "
+        "as phenomenological_gain, with a leading direction axis indexing facets "
+        "within a single field of view. Single-channel by default, since directions "
+        "multiply the array size."
     ),
 )
 
@@ -220,15 +243,16 @@ _IONOSPHERE = CalSpec(
 REGISTRY: dict[str, CalSpec] = {
     spec.name: spec
     for spec in (
-        _J,
-        _G,
-        _T,
+        _PHENOMENOLOGICAL_GAIN,
+        _ANTENNA_GAIN,
+        _TROPOSPHERIC_GAIN,
         _OPACITY,
-        _B,
-        _D,
-        _ANTPOS,
-        _FRINGEFIT,
-        _DD_GAIN,
+        _BANDPASS,
+        _LEAKAGE,
+        _DELAY,
+        _ANTENNA_POSITIONS,
+        _FRINGE_FIT,
+        _DD_PHENOMENOLOGICAL_GAIN,
         _IONOSPHERE,
     )
 }
@@ -247,7 +271,7 @@ def get_spec(name: str) -> CalSpec:
     """Look up a calibration type by name.
 
     Args:
-        name: Registry key, such as "B" or "fringefit".
+        name: Registry key, such as "bandpass" or "fringe_fit".
 
     Returns:
         The calibration type specification.
