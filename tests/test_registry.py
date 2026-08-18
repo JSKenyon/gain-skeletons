@@ -116,9 +116,11 @@ SINGLE_PARAMETER_CASES = DIRECTION_INDEPENDENT_CASES + DIRECTION_DEPENDENT_CASES
 
 # Two entries hold several quantities. Delay holds the two parameters of a phase
 # ramp, both polarised. Fringe fit holds four, of which DISP_DELAY alone is
-# unpolarised — the catalogue's only mix of the two.
-POLARISED = (*TIME_ANT, "frequency", "receptor_label", "parameter_label")
-UNPOLARISED = (*TIME_ANT, "frequency", "parameter_label")
+# unpolarised — the catalogue's only mix of the two. Neither declares a parameter
+# axis: each quantity is its own array, named for itself, so there is nothing for
+# such an axis to distinguish.
+POLARISED = (*TIME_ANT, "frequency", "receptor_label")
+UNPOLARISED = (*TIME_ANT, "frequency")
 DELAY_PARAMETERS = [
     ("PHASE", "deg", POLARISED),
     ("DELAY", "s", POLARISED),
@@ -178,8 +180,8 @@ def test_delay_and_fringe_fit_are_the_only_multi_parameter_entries():
     assert multi == MULTI_PARAMETER_KEYS
 
 
-# Delay is multi-parameter but wholly polarised, so fringe fit remains the only
-# entry where consolidating forces a quantity to be broadcast over receptors.
+# Delay is multi-parameter but wholly polarised, so fringe fit is the only entry
+# whose arrays do not all share a shape.
 def test_fringe_fit_is_the_only_entry_mixing_polarised_and_unpolarised():
     mixed = {
         key
@@ -189,13 +191,34 @@ def test_fringe_fit_is_the_only_entry_mixing_polarised_and_unpolarised():
     assert mixed == {"fringe_fit"}
 
 
-def test_fringe_fit_consolidated_labels_are_the_quantity_names():
-    assert get_spec("fringe_fit").all_labels == ("PHASE", "DELAY", "RATE", "DISP_DELAY")
+# The parameter axis distinguishes components within one quantity, never one
+# quantity from another. The multi-parameter entries therefore have no such axis.
+@pytest.mark.parametrize("key", sorted(MULTI_PARAMETER_KEYS))
+def test_multi_parameter_entries_declare_no_parameter_axis(key):
+    assert get_spec(key).parameter_labels is None
+    assert "parameter_label" not in get_spec(key).axes
 
 
-@pytest.mark.parametrize("key", ["delay", "fringe_fit"])
+# The entries that do carry the axis carry it for components of a single
+# quantity, which is why they have exactly one parameter each.
+@pytest.mark.parametrize(
+    ("key", "labels"),
+    [
+        ("phenomenological_gain", ("gain_X", "gain_Y")),
+        ("antenna_positions", ("dX", "dY", "dZ")),
+        ("dd_phenomenological_gain", ("gain_X", "gain_Y")),
+    ],
+)
+def test_parameter_axis_entries_are_single_quantity_components(key, labels):
+    spec = get_spec(key)
+    assert len(spec.parameters) == 1
+    assert spec.parameter_labels == labels
+
+
+@pytest.mark.parametrize("key", sorted(MULTI_PARAMETER_KEYS))
 def test_multi_parameter_entries_have_heterogeneous_units(key):
-    assert get_spec(key).uniform_units is None
+    units = {param.units for param in get_spec(key).parameters}
+    assert len(units) > 1
 
 
 # Several entries solve once per band, while bandpass, leakage and the general

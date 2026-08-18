@@ -1,17 +1,10 @@
-"""Builders that turn a calibration type specification into a dataset.
+"""Builder that turns a calibration type specification into a dataset.
 
-Two layouts are offered, and neither is privileged as the correct one. Both
-produce one dataset per solve, with one flag describing it; they differ in how
-that dataset holds the parameters. :func:`make_split_gain_xds` gives each
-quantity its own data array, named for it, so that units remain a scalar
-attribute and no quantity is padded out over an axis it does not need.
-:func:`make_gain_xds` puts every quantity in one array indexed by an explicit
-parameter axis, keeping the parameters needed to evaluate a Jones term adjacent
-in memory and in one chunked array on disk.
-
-Nine of the eleven registry entries declare one parameter, and for those the two
-builders produce identical datasets. The layouts diverge only for delay and
-fringe_fit.
+:func:`make_gain_xds` produces one dataset per solve: one data array per
+parameter, named for it, plus one flag describing the solve. Each array carries
+exactly the axes its parameter declares and a scalar ``units`` attribute, so
+nothing is broadcast and no quantity is padded out over an axis it does not
+need.
 
 All values are random. Complex parameters are generated near unit amplitude,
 since a uniform-random complex gain of arbitrary magnitude would be physically
@@ -39,7 +32,6 @@ DEFAULT_FLAG_FRACTION = 0.05
 DEFAULT_AMPLITUDE_JITTER = 0.1
 
 FLAG_NAME = "FLAG"
-PARAMETER_UNITS_COORD = "parameter_units"
 
 # Only these axes have factories taking extra keyword arguments. direction_coord
 # takes none, and the label axes get their values from labels rather than from a
@@ -197,35 +189,6 @@ def _generate_values(
     return (param.scale * rng.standard_normal(shape)).astype(dtype)
 
 
-def _broadcast_to_axes(
-    values: np.ndarray,
-    own_axes: Sequence[str],
-    target_axes: Sequence[str],
-    target_shape: tuple[int, ...],
-) -> np.ndarray:
-    """Broadcast a parameter's values onto a wider set of axes.
-
-    Used by the consolidated layout when a parameter lacks an axis that its
-    siblings have, such as a fringe fit's unpolarised dispersive delay. The
-    values are repeated along the missing axes, which is redundant, and
-    deliberately visible as such.
-
-    Args:
-        values: Values defined over own_axes.
-        own_axes: Axes the values are defined over, in canonical order.
-        target_axes: Axes to broadcast onto, in canonical order. Must be a
-            superset of own_axes.
-        target_shape: Shape corresponding to target_axes.
-
-    Returns:
-        A read-only view of shape target_shape.
-    """
-    reshaped = values.reshape(
-        tuple(values.shape[own_axes.index(axis)] if axis in own_axes else 1 for axis in target_axes)
-    )
-    return np.broadcast_to(reshaped, target_shape)
-
-
 #: Axes a flag never carries. A flag marks a whole solution bad, and these two
 #: axes index the components of one solution rather than distinct solutions: the
 #: quantities a single solve produced, and the receptors it solved together. If
@@ -243,53 +206,6 @@ def _flag_dims(dims: Sequence[str]) -> tuple[str, ...]:
         The same dimensions without the component axes (see UNFLAGGED_AXES).
     """
     return tuple(dim for dim in dims if dim not in UNFLAGGED_AXES)
-
-
-def _split_parameter_labels(spec: CalSpec) -> tuple[str, ...] | None:
-    """Resolve the parameter axis a split dataset's arrays share, if any.
-
-    In the split layout every array carries its parameter's name, so a
-    parameter axis whose single label restates that name says nothing and is
-    dropped. The axis survives only where a parameter has several labels of its
-    own — an antenna position offset's dX, dY and dZ, or the two columns of a
-    Jones term. Those arrays then share one axis, so two parameters
-    cannot ask for different labels on it.
-
-    Args:
-        spec: The calibration type.
-
-    Returns:
-        The shared labels, or None if no parameter needs the axis.
-
-    Raises:
-        ValueError: If two parameters want different labels on the shared axis.
-    """
-    label_sets = {
-        param.resolved_labels for param in spec.parameters if len(param.resolved_labels) > 1
-    }
-    if not label_sets:
-        return None
-    if len(label_sets) > 1:
-        raise ValueError(
-            f"calibration type {spec.name!r} cannot be split: its parameters ask for "
-            f"different labels on the shared parameter_label axis, {sorted(label_sets)}"
-        )
-    return label_sets.pop()
-
-
-def _split_axes(param: ParamSpec) -> tuple[str, ...]:
-    """Derive a parameter's axes in the split layout.
-
-    Args:
-        param: The parameter.
-
-    Returns:
-        The parameter's axes, without parameter_label when its only label
-        restates the parameter's own name.
-    """
-    if len(param.resolved_labels) > 1:
-        return param.axes
-    return tuple(axis for axis in param.axes if axis != "parameter_label")
 
 
 def _generate_flags(
@@ -369,188 +285,17 @@ def make_gain_xds(
     flag_fraction: float = DEFAULT_FLAG_FRACTION,
     amplitude_jitter: float = DEFAULT_AMPLITUDE_JITTER,
 ) -> xr.Dataset:
-    """Build a calibration dataset with every parameter in one array.
-
-    Parameters share a single data array, indexed by an explicit parameter axis.
-    This keeps the parameters needed to evaluate a Jones term adjacent in memory
-    and, once written, in one chunked zarr array rather than several that chunk
-    and compress independently.
-
-    Where the parameters do not all share an axis, the ones that lack it are
-    broadcast over it. Where they do not all share units, units move from a
-    scalar attribute to a coordinate aligned to the parameter axis.
-
-    Args:
-        spec: A CalSpec, or the name of a registered calibration type.
-        n_direction: Override the direction extent.
-        n_time: Override the time extent.
-        n_antenna: Override the antenna extent.
-        n_frequency: Override the frequency extent.
-        receptor_labels: Receptor labels, if the type has a receptor axis.
-        coord_kwargs: Axis name to extra keyword arguments for that axis's
-            coordinate factory, such as ``{"frequency": {"start": 1e9}}``.
-            Only ``time``, ``antenna_name``, and ``frequency`` accept extra
-            keywords; direction_coord takes none, and the label axes get
-            their values from receptor_labels or the parameter's own labels
-            instead.
-        seed: Seed for the random generator, for reproducibility.
-        flag_fraction: Probability that any given solution is flagged.
-        amplitude_jitter: Fractional spread of complex amplitude about unity.
-
-    Returns:
-        A dataset holding one parameter array, named after the calibration
-        type's consolidated name, and a boolean FLAG.
-
-    Raises:
-        ValueError: If the parameters do not share a dtype, if a size or
-            coord_kwargs entry names an axis the type lacks, if coord_kwargs
-            names an axis that takes no coordinate configuration, if the type
-            has more than one parameter but no parameter_label axis to
-            consolidate them onto, or if flag_fraction is out of range.
-        KeyError: If spec is a name that is not registered.
-    """
-    spec = _resolve_spec(spec)
-    _check_flag_fraction(flag_fraction)
-
-    dtype = spec.uniform_dtype
-    if dtype is None:
-        dtypes = {param.name: param.dtype for param in spec.parameters}
-        raise ValueError(
-            f"calibration type {spec.name!r} cannot be consolidated because its "
-            f"parameters do not share a dtype: {dtypes}. Use make_split_gain_xds instead."
-        )
-
-    sizes = _resolve_sizes(
-        spec,
-        {
-            "n_direction": n_direction,
-            "n_time": n_time,
-            "n_antenna": n_antenna,
-            "n_frequency": n_frequency,
-        },
-    )
-    axes = spec.axes
-
-    # Consolidating several parameters requires somewhere to put them. Without
-    # a parameter_label axis, the fill loop below has no way to distinguish
-    # one parameter's slice from another's, and would silently keep only the
-    # last one written.
-    if len(spec.parameters) > 1 and "parameter_label" not in axes:
-        names = [param.name for param in spec.parameters]
-        raise ValueError(
-            f"calibration type {spec.name!r} cannot be consolidated because it has "
-            f"{len(spec.parameters)} parameters but no parameter_label axis to "
-            f"distinguish them: {names}. Give its parameters a parameter_label axis, "
-            "or use make_split_gain_xds instead."
-        )
-
-    coords = _build_coords(
-        spec,
-        axes,
-        sizes,
-        spec.all_labels,
-        receptor_labels,
-        coord_kwargs or {},
-    )
-    shape = tuple(coords[axis].size for axis in axes)
-    rng = np.random.default_rng(seed)
-
-    # The parameter axis is last in canonical order, so each parameter occupies a
-    # contiguous trailing slice. Types without a parameter axis have exactly one
-    # parameter filling the whole array, and must not be sliced at all: the
-    # trailing axis would be receptor_label.
-    has_parameter_axis = "parameter_label" in axes
-    values = np.empty(shape, dtype=np.dtype(dtype))
-    offset = 0
-    for param in spec.parameters:
-        width = len(param.resolved_labels)
-        own_shape = tuple(
-            width if axis == "parameter_label" else coords[axis].size for axis in param.axes
-        )
-        generated = _generate_values(param, own_shape, rng, amplitude_jitter)
-        target_shape = tuple(
-            width if axis == "parameter_label" else coords[axis].size for axis in axes
-        )
-        broadcast = _broadcast_to_axes(generated, param.axes, axes, target_shape)
-        if has_parameter_axis:
-            values[..., offset : offset + width] = broadcast
-            offset += width
-        else:
-            values[...] = broadcast
-
-    flag_dims = _flag_dims(axes)
-    flag_shape = tuple(coords[axis].size for axis in flag_dims)
-
-    units = spec.uniform_units
-    parameter_attrs: dict[str, Any] = {} if units is None else {"units": units}
-
-    xds = xr.Dataset(
-        data_vars={
-            spec.resolved_consolidated_name: (axes, values, parameter_attrs),
-            FLAG_NAME: (
-                flag_dims,
-                _generate_flags(flag_shape, rng, flag_fraction),
-                {"long_name": "Solution flag"},
-            ),
-        },
-        coords=coords,
-        attrs=_dataset_attrs(spec),
-    )
-
-    if units is None:
-        # Units differ between parameters, so a scalar attribute would be a
-        # false claim. Carry them alongside the parameter labels instead, where
-        # they travel with any selection.
-        xds = xds.assign_coords(
-            {
-                PARAMETER_UNITS_COORD: (
-                    "parameter_label",
-                    np.array(
-                        [param.units for param in spec.parameters for _ in param.resolved_labels]
-                    ),
-                )
-            }
-        )
-        xds[PARAMETER_UNITS_COORD].attrs["long_name"] = "Parameter units"
-
-    return xds
-
-
-def make_split_gain_xds(
-    spec: CalSpec | str,
-    *,
-    n_direction: int | None = None,
-    n_time: int | None = None,
-    n_antenna: int | None = None,
-    n_frequency: int | None = None,
-    receptor_labels: Sequence[str] = DEFAULT_RECEPTOR_LABELS,
-    coord_kwargs: Mapping[str, Mapping[str, Any]] | None = None,
-    seed: int | None = 0,
-    flag_fraction: float = DEFAULT_FLAG_FRACTION,
-    amplitude_jitter: float = DEFAULT_AMPLITUDE_JITTER,
-) -> xr.Dataset:
     """Build one calibration dataset holding one array per parameter.
 
-    Each quantity lives in its own data array, named for the parameter, so that
-    units can be a scalar attribute and each array keeps only the axes it is
-    actually defined over. Nothing is broadcast, and no parameter is padded out
-    over an axis it does not need. One solve remains one dataset with one flag.
+    Each quantity lives in its own data array, named for the parameter, with a
+    scalar ``units`` attribute and exactly the axes its ParamSpec declares. One
+    solve is one dataset with one flag.
 
-    The cost is that the quantities are no longer adjacent: they occupy several
-    arrays, which chunk and compress independently once written, rather than
-    one array a reader can slice across.
-
-    A parameter axis whose single label restates its array's own name is
-    dropped, since the array name already carries it. The axis survives where a
-    parameter has several labels of its own, such as an antenna position
-    offset's dX, dY and dZ.
-
-    For a calibration type with one parameter, which is nine of the eleven
-    registered types, this returns a dataset identical to the one
-    :func:`make_gain_xds` produces, because the consolidated array then takes
-    its name from that sole parameter. The equivalence breaks if the spec
-    overrides consolidated_name, since the two layouts then name the array
-    differently even though there is only one parameter to name.
+    A parameter axis appears only where some parameter declares one, which in
+    the registry means the several components of a single quantity: an antenna
+    position offset's dX, dY and dZ, or the two columns of a Jones term. Every
+    parameter declaring that axis shares its coordinate, which CalSpec has
+    already checked they agree on.
 
     Args:
         spec: A CalSpec, or the name of a registered calibration type.
@@ -575,8 +320,7 @@ def make_split_gain_xds(
     Raises:
         ValueError: If a size or coord_kwargs entry names an axis the type
             lacks, if coord_kwargs names an axis that takes no coordinate
-            configuration, if two parameters want different labels on the
-            shared parameter axis, or if flag_fraction is out of range.
+            configuration, or if flag_fraction is out of range.
         KeyError: If spec is a name that is not registered.
     """
     spec = _resolve_spec(spec)
@@ -591,34 +335,28 @@ def make_split_gain_xds(
             "n_frequency": n_frequency,
         },
     )
-    # Validate coord_kwargs against the whole calibration type, not each
-    # parameter, so that configuring an axis only some parameters use is not an
-    # error. The result is discarded: the coordinates the dataset actually
-    # carries are built below, over the axes that survive splitting.
-    _build_coords(spec, spec.axes, sizes, spec.all_labels, receptor_labels, coord_kwargs or {})
-
-    labels = _split_parameter_labels(spec)
-    axes = tuple(axis for axis in spec.axes if labels is not None or axis != "parameter_label")
+    # coord_kwargs is validated against the calibration type as a whole rather
+    # than parameter by parameter, so configuring an axis only some parameters
+    # use is not an error.
+    axes = spec.axes
     coords = _build_coords(
         spec,
         axes,
         sizes,
-        labels or (),
+        spec.parameter_labels or (),
         receptor_labels,
-        {axis: kwargs for axis, kwargs in (coord_kwargs or {}).items() if axis in axes},
+        coord_kwargs or {},
     )
 
     rng = np.random.default_rng(seed)
     data_vars: dict[str, Any] = {}
 
-    # Every parameter's values are drawn before any flag, matching the order
-    # make_gain_xds draws in. That is what keeps the two layouts producing
-    # identical datasets for single-parameter types.
+    # Every parameter's values are drawn before any flag, so the flag values a
+    # given seed produces do not depend on how many parameters precede them.
     for param in spec.parameters:
-        param_axes = _split_axes(param)
-        shape = tuple(coords[axis].size for axis in param_axes)
+        shape = tuple(coords[axis].size for axis in param.axes)
         values = _generate_values(param, shape, rng, amplitude_jitter)
-        data_vars[param.name] = (param_axes, values, {"units": param.units})
+        data_vars[param.name] = (param.axes, values, {"units": param.units})
 
     # One solve, one flag. Its dimensions span every axis some parameter uses,
     # less the component axes, so a quantity defined over fewer axes than its

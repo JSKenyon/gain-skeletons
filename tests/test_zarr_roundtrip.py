@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from gain_skeletons.builder import make_gain_xds, make_split_gain_xds
+from gain_skeletons.builder import make_gain_xds
 from gain_skeletons.registry import list_cal_types
 
 
@@ -31,15 +31,9 @@ def roundtrip(xds: xr.Dataset, path) -> xr.Dataset:
 
 
 @pytest.mark.parametrize("key", list_cal_types())
-def test_consolidated_layout_survives_roundtrip(key, tmp_path):
+def test_every_registered_type_survives_roundtrip(key, tmp_path):
     xds = make_gain_xds(key)
     assert xds.identical(roundtrip(xds, tmp_path / f"{key}.zarr"))
-
-
-@pytest.mark.parametrize("key", list_cal_types())
-def test_split_layout_survives_roundtrip(key, tmp_path):
-    xds = make_split_gain_xds(key)
-    assert xds.identical(roundtrip(xds, tmp_path / f"{key}_split.zarr"))
 
 
 # Complex gains are the case most likely to be mangled by a storage layer, so
@@ -65,13 +59,20 @@ def test_string_coordinates_are_preserved(tmp_path):
     assert list(read.receptor_label.values) == list(xds.receptor_label.values)
 
 
-# parameter_units is a non-dimension coordinate, which is the part of the
-# consolidated layout most at risk of being demoted to a data variable.
-def test_parameter_units_survives_as_a_coordinate(tmp_path):
+# Each quantity's units ride on its own array, so a type whose quantities are
+# differently united needs nothing beyond per-array attributes to survive.
+def test_per_array_units_survive_for_a_multi_parameter_type(tmp_path):
     xds = make_gain_xds("fringe_fit")
     read = roundtrip(xds, tmp_path / "fringe_fit.zarr")
-    assert "parameter_units" in read.coords
-    assert list(read.parameter_units.values) == ["deg", "s", "s/s", "s"]
+    assert {
+        name: read[name].attrs["units"] for name in ("PHASE", "DELAY", "RATE", "DISP_DELAY")
+    } == {
+        "PHASE": "deg",
+        "DELAY": "s",
+        "RATE": "s/s",
+        "DISP_DELAY": "s",
+    }
+    assert "parameter_units" not in read.coords
 
 
 def test_coordinate_attributes_are_preserved(tmp_path):
@@ -105,23 +106,16 @@ def stored_arrays(xds: xr.Dataset, path) -> set[str]:
     return {entry.name for entry in path.iterdir() if entry.is_dir()}
 
 
-# The layouts differ on disk as well as in memory: one chunked parameter array
-# against four that chunk and compress independently. Each is one store either
-# way. This is the difference the notebook exists to show.
-def test_consolidated_stores_one_parameter_array_where_split_stores_four(tmp_path):
-    consolidated = make_gain_xds("fringe_fit")
-    split = make_split_gain_xds("fringe_fit")
+# One solve is one store, and within it one array per quantity plus one per
+# coordinate. A multi-parameter type therefore chunks and compresses each of its
+# quantities independently, which is the trade the layout accepts in exchange
+# for every array keeping its own exact axes and units.
+def test_each_quantity_gets_its_own_array_in_the_store(tmp_path):
+    xds = make_gain_xds("fringe_fit")
 
     # A zarr store holds one top-level directory per array, whether that array
     # is a data variable or a coordinate.
-    on_disk = stored_arrays(consolidated, tmp_path / "consolidated.zarr")
-    assert on_disk == set(consolidated.data_vars) | set(consolidated.coords)
-    assert set(consolidated.data_vars) == {"PARAMETER", "FLAG"}
-
-    split_on_disk = stored_arrays(split, tmp_path / "split.zarr")
-    assert split_on_disk == set(split.data_vars) | set(split.coords)
-    assert set(split.data_vars) == {"PHASE", "DELAY", "RATE", "DISP_DELAY", "FLAG"}
-
-    # Consolidating buys locality and pays for it with two extra coordinate
-    # arrays: the parameter labels, and the units that vary along them.
-    assert on_disk - split_on_disk == {"PARAMETER", "parameter_label", "parameter_units"}
+    on_disk = stored_arrays(xds, tmp_path / "fringe_fit.zarr")
+    assert on_disk == set(xds.data_vars) | set(xds.coords)
+    assert set(xds.data_vars) == {"PHASE", "DELAY", "RATE", "DISP_DELAY", "FLAG"}
+    assert "parameter_units" not in on_disk
