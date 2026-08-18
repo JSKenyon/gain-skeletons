@@ -6,3 +6,6 @@ __pycache__/
 .ruff_cache/
 *.zarr/
 .ipynb_checkpoints/
+
+# Superpowers process artifacts: kept locally, never committed.
+docs/superpowers/
