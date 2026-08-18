@@ -85,7 +85,7 @@ def test_antenna_positions_parameter_labels():
 
 @pytest.mark.parametrize("key", ["phenomenological_gain", "dd_phenomenological_gain"])
 def test_phenomenological_parameter_labels_are_the_jones_columns(key):
-    assert list(make_gain_xds(key).parameter_label.values) == ["aligned", "cross"]
+    assert list(make_gain_xds(key).parameter_label.values) == ["gain_X", "gain_Y"]
 
 
 def test_receptor_labels_are_overridable():

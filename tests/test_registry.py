@@ -26,7 +26,7 @@ DIRECTION_INDEPENDENT_CASES = [
         "GAIN",
         "rel",
         "complex64",
-        ("aligned", "cross"),
+        ("gain_X", "gain_Y"),
         "full",
     ),
     # Standard electronic gain: complex, one solution per band, on-diagonal only.
@@ -104,7 +104,7 @@ DIRECTION_DEPENDENT_CASES = [
         "GAIN",
         "rel",
         "complex64",
-        ("aligned", "cross"),
+        ("gain_X", "gain_Y"),
         "full",
     ),
     # Ionospheric TEC: direction-dependent, but neither frequency- nor

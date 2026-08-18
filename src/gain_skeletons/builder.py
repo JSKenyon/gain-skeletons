@@ -251,8 +251,8 @@ def _split_parameter_labels(spec: CalSpec) -> tuple[str, ...] | None:
     In the split layout every array carries its parameter's name, so a
     parameter axis whose single label restates that name says nothing and is
     dropped. The axis survives only where a parameter has several labels of its
-    own — an antenna position offset's dX, dY and dZ, or a Jones term's aligned
-    and cross columns. Those arrays then share one axis, so two parameters
+    own — an antenna position offset's dX, dY and dZ, or the two columns of a
+    Jones term. Those arrays then share one axis, so two parameters
     cannot ask for different labels on it.
 
     Args:

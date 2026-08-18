@@ -11,8 +11,8 @@ cannot be represented.
 "Parameter" carries two senses in calibration, and this module keeps them apart
 under a single mechanism:
 
-- Same-unit parameters within one quantity, such as the aligned and cross gains
-  of a full Jones term, are one ParamSpec with several labels.
+- Same-unit parameters within one quantity, such as the two column gains of a
+  full Jones term, are one ParamSpec with several labels.
 - Different-unit quantities within one calibration type, such as a fringe fit's
   phase, delay and rate, are several ParamSpecs.
 """
