@@ -31,9 +31,10 @@ _TIME_ANT = ("time", "antenna_name")
 _GAIN_AXES = (*_TIME_ANT, "frequency", "receptor_label")
 _UNPOL_AXES = (*_TIME_ANT, "frequency")
 
-# The two columns of the Jones matrix are the "aligned" and "cross" gains, which
-# is what a phenomenological term's two parameters per receptor are.
-_JONES_LABELS = ("aligned", "cross")
+# The two columns of the Jones matrix, named for the receptor each column maps
+# from, are what a phenomenological term's two parameters per receptor are. The
+# naming is provisional; nothing outside this constant depends on the spelling.
+_JONES_LABELS = ("gain_X", "gain_Y")
 
 
 def _gain_spec(
@@ -89,8 +90,8 @@ _PHENOMENOLOGICAL_GAIN = _gain_spec(
     labels=_JONES_LABELS,
     description=(
         "General Jones term, describing the response without attributing it to a "
-        "physical cause. Two complex gains per receptor, the aligned and cross "
-        "responses, so a parameter axis is required. Its frequency extent is "
+        "physical cause. Two complex gains per receptor, one per column of the "
+        "Jones matrix, so a parameter axis is required. Its frequency extent is "
         "arbitrary, so it defaults to channel-resolved."
     ),
 )
@@ -215,7 +216,7 @@ _DD_PHENOMENOLOGICAL_GAIN = _gain_spec(
     labels=_JONES_LABELS,
     n_direction=N_DIRECTION,
     description=(
-        "Direction-dependent general Jones term. The same aligned and cross gains "
+        "Direction-dependent general Jones term. The same two gains per receptor "
         "as phenomenological_gain, with a leading direction axis indexing facets "
         "within a single field of view. Single-channel by default, since directions "
         "multiply the array size."

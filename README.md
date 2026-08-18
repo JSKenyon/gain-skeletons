@@ -87,7 +87,7 @@ gs.make_gain_xds("bandpass").FLAG.dims
 
 | Key | Conventional | dtype | Parameters | Direction-dependent | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `phenomenological_gain` | `J` | complex64 | `GAIN` (rel), labels: aligned, cross | no | full Jones; channel-resolved |
+| `phenomenological_gain` | `J` | complex64 | `GAIN` (rel), labels: gain_X, gain_Y | no | full Jones; channel-resolved |
 | `antenna_gain` | `G` | complex64 | `GAIN` (rel) | no | on-diagonal only; single channel |
 | `tropospheric_gain` | `T` | complex64 | `GAIN` (rel) | no | scalar, unpolarised; single channel |
 | `opacity` | | float64 | `OPAC` (nepers) | no | unpolarised; single channel |
@@ -96,7 +96,7 @@ gs.make_gain_xds("bandpass").FLAG.dims
 | `delay` | `K` | float64 | `PHASE` (deg), `DELAY` (s) | no | multi-parameter; both polarised |
 | `antenna_positions` | | float64 | `ANTENNA_POSITION_OFFSET` (m), labels: dX, dY, dZ | no | no frequency or receptor axis |
 | `fringe_fit` | | float64 | `PHASE` (deg), `DELAY` (s), `RATE` (s/s), `DISP_DELAY` (s, unpolarised) | no | multi-parameter; mixes polarised and unpolarised |
-| `dd_phenomenological_gain` | | complex64 | `GAIN` (rel), labels: aligned, cross | yes | full Jones; single channel |
+| `dd_phenomenological_gain` | | complex64 | `GAIN` (rel), labels: gain_X, gain_Y | yes | full Jones; single channel |
 | `ionosphere` | | float64 | `TEC` (TECU) | yes | no frequency or receptor axis |
 
 Keys are spelled out rather than abbreviated, since the conventional single letters carry
