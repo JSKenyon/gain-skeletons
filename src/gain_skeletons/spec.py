@@ -115,13 +115,10 @@ class CalSpec:
     Attributes:
         name: Registry key for the calibration type.
         parameters: The parameters, in declaration order. That order fixes the
-            order of the consolidated parameter axis.
+            order of the data arrays a builder produces.
         default_sizes: Default extent of every sized axis the type uses. This
             is what distinguishes a deliberately single-channel axis from a
             channel-resolved one.
-        consolidated_name: Data array name in the consolidated layout. May be
-            omitted only when there is exactly one parameter, in which case
-            that parameter's name is used.
         jones_structure: Which part of the Jones matrix the type populates, if
             it populates a well-defined part. Describes the origin of the data,
             not an instruction for its use.
@@ -131,7 +128,6 @@ class CalSpec:
     name: str
     parameters: tuple[ParamSpec, ...]
     default_sizes: Mapping[str, int] = field(default_factory=dict)
-    consolidated_name: str | None = None
     jones_structure: str | None = None
     description: str = ""
 
@@ -139,24 +135,24 @@ class CalSpec:
         """Validate the calibration type.
 
         Raises:
-            ValueError: If there are no parameters, labels collide across
-                parameters, a multi-parameter type omits consolidated_name, or
-                default_sizes does not correspond exactly to the sized axes in
-                use.
+            ValueError: If there are no parameters, two parameters disagree
+                about the labels on the shared parameter axis, or default_sizes
+                does not correspond exactly to the sized axes in use.
         """
         if not self.parameters:
             raise ValueError(f"calibration type {self.name!r} needs at least one parameter")
 
-        labels = self.all_labels
-        if len(set(labels)) != len(labels):
+        # A dataset holds one parameter_label dimension with one coordinate, so
+        # every parameter declaring that axis indexes the same labels and they
+        # must agree on what those labels are. Parameters that do not declare the
+        # axis are unconstrained by this.
+        label_sets = {
+            param.resolved_labels for param in self.parameters if "parameter_label" in param.axes
+        }
+        if len(label_sets) > 1:
             raise ValueError(
-                f"calibration type {self.name!r} has duplicate parameter labels: {list(labels)}"
-            )
-
-        if self.consolidated_name is None and len(self.parameters) > 1:
-            raise ValueError(
-                f"calibration type {self.name!r} has {len(self.parameters)} parameters "
-                "and so must set consolidated_name"
+                f"calibration type {self.name!r} has parameters that disagree about the "
+                f"labels on the shared parameter_label axis: {sorted(label_sets)}"
             )
 
         axes = self.axes
@@ -195,25 +191,13 @@ class CalSpec:
         return "direction" in self.axes
 
     @property
-    def resolved_consolidated_name(self) -> str:
-        """Data array name to use in the consolidated layout."""
-        if self.consolidated_name is not None:
-            return self.consolidated_name
-        return self.parameters[0].name
+    def parameter_labels(self) -> tuple[str, ...] | None:
+        """Labels on the shared parameter axis, or None if the type has no such axis.
 
-    @property
-    def all_labels(self) -> tuple[str, ...]:
-        """Every parameter label, concatenated in declaration order."""
-        return tuple(label for param in self.parameters for label in param.resolved_labels)
-
-    @property
-    def uniform_units(self) -> str | None:
-        """The units shared by every parameter, or None if they differ."""
-        units = {param.units for param in self.parameters}
-        return units.pop() if len(units) == 1 else None
-
-    @property
-    def uniform_dtype(self) -> str | None:
-        """The dtype shared by every parameter, or None if they differ."""
-        dtypes = {param.dtype for param in self.parameters}
-        return dtypes.pop() if len(dtypes) == 1 else None
+        Construction has already established that every parameter declaring the
+        axis agrees on its labels, so any one of them speaks for all.
+        """
+        for param in self.parameters:
+            if "parameter_label" in param.axes:
+                return param.resolved_labels
+        return None

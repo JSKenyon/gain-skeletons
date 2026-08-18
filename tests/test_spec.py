@@ -66,92 +66,46 @@ def test_cal_spec_axes_is_the_union_in_canonical_order():
     spec = CalSpec(
         name="fringe_fit",
         parameters=(
-            ParamSpec("PHASE", "deg", ("time", "receptor_label", "parameter_label"), "float64"),
-            ParamSpec("DISP_DELAY", "s", ("time", "parameter_label"), "float64"),
+            ParamSpec("PHASE", "deg", ("time", "receptor_label"), "float64"),
+            ParamSpec("DISP_DELAY", "s", ("time",), "float64"),
         ),
         default_sizes={"time": 4},
-        consolidated_name="PARAMETER",
     )
-    assert spec.axes == ("time", "receptor_label", "parameter_label")
+    assert spec.axes == ("time", "receptor_label")
 
 
-def test_cal_spec_all_labels_concatenates_in_declaration_order():
+def test_cal_spec_parameter_labels_is_none_without_a_parameter_axis():
     spec = CalSpec(
         name="fringe_fit",
         parameters=(
-            ParamSpec("PHASE", "deg", ("time", "parameter_label"), "float64"),
-            ParamSpec("DELAY", "s", ("time", "parameter_label"), "float64"),
+            ParamSpec("PHASE", "deg", ("time",), "float64"),
+            ParamSpec("DELAY", "s", ("time",), "float64"),
         ),
         default_sizes={"time": 4},
-        consolidated_name="PARAMETER",
     )
-    assert spec.all_labels == ("PHASE", "DELAY")
+    assert spec.parameter_labels is None
 
 
-# default_sizes must name every sized axis the type uses, so the helper below
-# supplies a complete set for make_gain_param's default axes.
-GAIN_SIZES = {"time": 4, "antenna_name": 8, "frequency": 1}
-
-
-def test_cal_spec_consolidated_name_defaults_to_the_sole_parameter():
-    spec = CalSpec(name="antenna_gain", parameters=(make_gain_param(),), default_sizes=GAIN_SIZES)
-    assert spec.resolved_consolidated_name == "GAIN"
-
-
-def test_cal_spec_requires_consolidated_name_when_multi_parameter():
-    with pytest.raises(ValueError, match="consolidated_name"):
-        CalSpec(
-            name="fringe_fit",
-            parameters=(
-                ParamSpec("PHASE", "deg", ("time",), "float64"),
-                ParamSpec("DELAY", "s", ("time",), "float64"),
-            ),
-            default_sizes={"time": 4},
-        )
-
-
-def test_cal_spec_reports_uniform_units():
+def test_cal_spec_parameter_labels_reports_the_shared_axis():
     spec = CalSpec(
         name="antenna_positions",
         parameters=(
             ParamSpec(
                 "ANTENNA_POSITION_OFFSET",
                 "m",
-                ("time", "antenna_name", "parameter_label"),
+                ("time", "parameter_label"),
                 "float64",
                 labels=("dX", "dY", "dZ"),
             ),
         ),
-        default_sizes={"time": 4, "antenna_name": 8},
-    )
-    assert spec.uniform_units == "m"
-
-
-def test_cal_spec_reports_heterogeneous_units_as_none():
-    spec = CalSpec(
-        name="fringe_fit",
-        parameters=(
-            ParamSpec("PHASE", "deg", ("time", "parameter_label"), "float64"),
-            ParamSpec("DELAY", "s", ("time", "parameter_label"), "float64"),
-        ),
         default_sizes={"time": 4},
-        consolidated_name="PARAMETER",
     )
-    assert spec.uniform_units is None
-    assert spec.uniform_dtype == "float64"
+    assert spec.parameter_labels == ("dX", "dY", "dZ")
 
 
-def test_cal_spec_reports_heterogeneous_dtype_as_none():
-    spec = CalSpec(
-        name="mixed",
-        parameters=(
-            ParamSpec("A", "rel", ("time", "parameter_label"), "complex64"),
-            ParamSpec("B", "rel", ("time", "parameter_label"), "float64"),
-        ),
-        default_sizes={"time": 4},
-        consolidated_name="PARAMETER",
-    )
-    assert spec.uniform_dtype is None
+# default_sizes must name every sized axis the type uses, so the helper below
+# supplies a complete set for make_gain_param's default axes.
+GAIN_SIZES = {"time": 4, "antenna_name": 8, "frequency": 1}
 
 
 def test_cal_spec_direction_dependent_follows_the_direction_axis():
@@ -165,17 +119,49 @@ def test_cal_spec_direction_dependent_follows_the_direction_axis():
     assert dd.direction_dependent is True
 
 
-def test_cal_spec_rejects_duplicate_labels_across_parameters():
-    with pytest.raises(ValueError, match="duplicate"):
+# One dataset holds one parameter_label coordinate, so parameters declaring
+# that axis must agree on its labels. Two parameters wanting different labels
+# describe an axis that cannot exist, and that is a spec error rather than
+# something for a builder to reconcile.
+def test_cal_spec_rejects_parameters_that_disagree_about_parameter_labels():
+    with pytest.raises(ValueError, match="disagree"):
         CalSpec(
-            name="clash",
+            name="conflicting_labels",
             parameters=(
-                ParamSpec("A", "s", ("time", "parameter_label"), "float64", labels=("x",)),
-                ParamSpec("B", "s", ("time", "parameter_label"), "float64", labels=("x",)),
+                ParamSpec(
+                    "A", "m", ("time", "parameter_label"), "float64", labels=("dX", "dY", "dZ")
+                ),
+                ParamSpec("B", "m", ("time", "parameter_label"), "float64", labels=("dAZ", "dEL")),
             ),
             default_sizes={"time": 4},
-            consolidated_name="PARAMETER",
         )
+
+
+# Agreement, not uniqueness: sharing the axis means sharing its labels.
+def test_cal_spec_accepts_parameters_sharing_identical_labels():
+    spec = CalSpec(
+        name="agreeing_labels",
+        parameters=(
+            ParamSpec("A", "m", ("time", "parameter_label"), "float64", labels=("dX", "dY")),
+            ParamSpec("B", "s", ("time", "parameter_label"), "float64", labels=("dX", "dY")),
+        ),
+        default_sizes={"time": 4},
+    )
+    assert spec.parameter_labels == ("dX", "dY")
+
+
+# A parameter that does not declare the axis is unconstrained by the labels of
+# one that does.
+def test_cal_spec_ignores_parameters_without_the_axis_when_checking_labels():
+    spec = CalSpec(
+        name="partial",
+        parameters=(
+            ParamSpec("A", "m", ("time", "parameter_label"), "float64", labels=("dX", "dY")),
+            ParamSpec("B", "s", ("time",), "float64"),
+        ),
+        default_sizes={"time": 4},
+    )
+    assert spec.parameter_labels == ("dX", "dY")
 
 
 def test_cal_spec_rejects_no_parameters():

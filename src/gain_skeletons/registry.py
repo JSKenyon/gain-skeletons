@@ -143,17 +143,15 @@ _OPACITY = CalSpec(
 )
 
 # Delay: a linear phase ramp across frequency, stored as the parameters of that
-# ramp rather than sampled channel by channel. Like fringe_fit it holds several
-# differently-united quantities, but both of them are polarised, so nothing has
-# to be broadcast when they share one array.
+# ramp rather than sampled channel by channel. Two differently-united quantities
+# from one solve, so two data arrays.
 _DELAY = CalSpec(
     name="delay",
     parameters=(
-        ParamSpec("PHASE", "deg", (*_GAIN_AXES, "parameter_label"), "float64", scale=30.0),
-        ParamSpec("DELAY", "s", (*_GAIN_AXES, "parameter_label"), "float64", scale=1.0e-9),
+        ParamSpec("PHASE", "deg", _GAIN_AXES, "float64", scale=30.0),
+        ParamSpec("DELAY", "s", _GAIN_AXES, "float64", scale=1.0e-9),
     ),
     default_sizes={"time": N_TIME, "antenna_name": N_ANTENNA, "frequency": N_CHANNEL_ONE},
-    consolidated_name="PARAMETER",
     description=(
         "Delay. A phase offset and a slope in seconds per receptor, which together "
         "parameterise a phase ramp across frequency. The frequency axis is present "
@@ -182,28 +180,21 @@ _ANTENNA_POSITIONS = CalSpec(
 )
 
 # Fringe fit: the only entry that mixes polarised and unpolarised quantities.
-# DISP_DELAY carries no receptor axis while the other three do, so consolidating
-# has to broadcast it — the one place in the catalogue where that cost shows.
+# DISP_DELAY carries no receptor axis while the other three do, so it is the one
+# entry whose arrays do not all share a shape.
 _FRINGE_FIT = CalSpec(
     name="fringe_fit",
     parameters=(
-        ParamSpec("PHASE", "deg", (*_GAIN_AXES, "parameter_label"), "float64", scale=30.0),
-        ParamSpec("DELAY", "s", (*_GAIN_AXES, "parameter_label"), "float64", scale=1.0e-9),
-        ParamSpec("RATE", "s/s", (*_GAIN_AXES, "parameter_label"), "float64", scale=1.0e-12),
-        ParamSpec(
-            "DISP_DELAY",
-            "s",
-            (*_UNPOL_AXES, "parameter_label"),
-            "float64",
-            scale=1.0e-9,
-        ),
+        ParamSpec("PHASE", "deg", _GAIN_AXES, "float64", scale=30.0),
+        ParamSpec("DELAY", "s", _GAIN_AXES, "float64", scale=1.0e-9),
+        ParamSpec("RATE", "s/s", _GAIN_AXES, "float64", scale=1.0e-12),
+        ParamSpec("DISP_DELAY", "s", _UNPOL_AXES, "float64", scale=1.0e-9),
     ),
     default_sizes={"time": N_TIME, "antenna_name": N_ANTENNA, "frequency": N_CHANNEL_ONE},
-    consolidated_name="PARAMETER",
     description=(
         "Fringe fit. Four quantities with differing units, produced by a single "
-        "solve. DISP_DELAY is unpolarised while the others are not, so the "
-        "consolidated layout must broadcast it over the receptor axis."
+        "solve. DISP_DELAY is unpolarised while the others are not, so its array "
+        "carries one axis fewer than its siblings'."
     ),
 )
 

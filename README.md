@@ -34,44 +34,43 @@ print(xds.GAIN.dims, xds.GAIN.shape, xds.GAIN.dtype)
 - **`spec.py` and `registry.py`** — `spec.py` defines `ParamSpec` and `CalSpec`, the
   frozen, self-validating dataclasses that declare a calibration type without any code of
   its own; `registry.py` holds the catalogue of `CalSpec` objects, built on top of them.
-- **`builder.py`** — `make_gain_xds` and `make_split_gain_xds` turn any `CalSpec`
-  (registered or hand-built) into datasets. It imports `registry.py`, so it sits alone on
-  top rather than sharing a layer with it.
+- **`builder.py`** — `make_gain_xds` turns any `CalSpec` (registered or hand-built) into a
+  dataset. It imports `registry.py`, so it sits alone on top rather than sharing a layer
+  with it.
 
-## Two layouts
+## One array per quantity
 
-Every calibration type can be built two ways, and neither is privileged as the correct
-one. Both give one solve one dataset with one `FLAG`; they differ in how that dataset
-holds the parameters:
+`make_gain_xds` gives one solve one dataset: one data array per parameter, named for the
+parameter, plus one `FLAG` describing the solve. Each array carries exactly the axes its
+`ParamSpec` declares and a scalar `units` attribute.
 
-- **`make_gain_xds`** puts every parameter into one data array, indexed by an explicit
-  `parameter_label` axis. This keeps the parameters needed to evaluate a Jones term
-  adjacent in memory and, once written, in one chunked zarr array rather than several
-  that chunk and compress independently. Putting a polarised and an unpolarised parameter
-  into the same array means broadcasting the unpolarised one redundantly over
-  `receptor_label` — visible in `fringe_fit`, where `DISP_DELAY` is broadcast this way —
-  and units that vary between parameters move from a scalar attribute to a
-  `parameter_units` coordinate.
-- **`make_split_gain_xds`** gives each parameter its own data array within that dataset,
-  named for the parameter, with its own exact axes and a scalar `units` attribute. Nothing
-  is broadcast and no parameter is padded out over an axis it does not need. The cost is
-  that the quantities are no longer adjacent.
+That last point is why the layout is what it is. One array per parameter means one unit
+per array, so units are always a scalar attribute — they never have to move to a
+coordinate or a per-label mapping, and they survive subsetting for free because they
+describe the array rather than positions along an axis:
 
-For the nine calibration types with a single parameter, the two functions produce
-identical datasets — `tests/test_builder_split.py` pins this. The layouts diverge for
-`delay` and `fringe_fit`, the two types with several differently-united parameters, and
-only `fringe_fit` pays the broadcasting cost, since both of `delay`'s parameters are
-polarised.
+```python
+xds = gs.make_gain_xds("fringe_fit")
+{name: xds[name].attrs["units"] for name in ("PHASE", "DELAY", "RATE", "DISP_DELAY")}
+# {'PHASE': 'deg', 'DELAY': 's', 'RATE': 's/s', 'DISP_DELAY': 's'}
+```
 
-`parameter_label` does two jobs, and only one of them survives splitting. Where it
-distinguishes components within a single parameter — `antenna_positions`' `dX`, `dY` and
-`dZ` — it is present in both layouts. Where it would merely restate an array's own name,
-as it would for each of `fringe_fit`'s four quantities, the split layout drops it: the
-array name already carries that.
+Nothing is broadcast either. `fringe_fit`'s `DISP_DELAY` is unpolarised while its three
+siblings are not, so its array simply carries one axis fewer — no padding out over a
+`receptor_label` axis it does not need.
+
+The trade is locality: a type with several quantities holds them in several arrays, which
+chunk and compress independently once written, rather than in one array a reader can slice
+across.
+
+`parameter_label` has exactly one job here: distinguishing components within a single
+quantity, as with `antenna_positions`' `dX`, `dY` and `dZ`. It never distinguishes one
+quantity from another, because the array names already do that. So the axis appears only
+where a parameter declares it, and only three registry entries do.
 
 ## Flagging
 
-Every dataset carries one boolean `FLAG`, in both layouts. It never carries
+Every dataset carries one boolean `FLAG`. It never carries
 `parameter_label` or `receptor_label`, because those two index the components of a single
 solution rather than distinct solutions — the quantities one solve produced, and the
 receptors it solved together. A solution whose one component is untrustworthy is not a
@@ -93,9 +92,9 @@ gs.make_gain_xds("bandpass").FLAG.dims
 | `opacity` | | float64 | `OPAC` (nepers) | no | unpolarised; single channel |
 | `bandpass` | `B` | complex64 | `GAIN` (rel) | no | on-diagonal only; channel-resolved |
 | `leakage` | `D` | complex64 | `GAIN` (rel) | no | off-diagonal only; channel-resolved |
-| `delay` | `K` | float64 | `PHASE` (deg), `DELAY` (s) | no | multi-parameter; both polarised |
+| `delay` | `K` | float64 | `PHASE` (deg), `DELAY` (s) | no | two arrays; both polarised |
 | `antenna_positions` | | float64 | `ANTENNA_POSITION_OFFSET` (m), labels: dX, dY, dZ | no | no frequency or receptor axis |
-| `fringe_fit` | | float64 | `PHASE` (deg), `DELAY` (s), `RATE` (s/s), `DISP_DELAY` (s, unpolarised) | no | multi-parameter; mixes polarised and unpolarised |
+| `fringe_fit` | | float64 | `PHASE` (deg), `DELAY` (s), `RATE` (s/s), `DISP_DELAY` (s, unpolarised) | no | four arrays; mixes polarised and unpolarised |
 | `dd_phenomenological_gain` | | complex64 | `GAIN` (rel), labels: gain_X, gain_Y | yes | full Jones; single channel |
 | `ionosphere` | | float64 | `TEC` (TECU) | yes | no frequency or receptor axis |
 
@@ -118,5 +117,5 @@ python -m pytest
 ## Further reading
 
 [`notebooks/gain_skeletons_demo.ipynb`](notebooks/gain_skeletons_demo.ipynb) — a guided
-tour through the coordinate factories, several calibration types, both layouts side by
-side, and a zarr round-trip.
+tour through the coordinate factories, several calibration types, flagging, and a zarr
+round-trip.
