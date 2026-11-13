@@ -41,10 +41,13 @@ DEFAULT_TIME_START = 1_700_000_000.0
 DEFAULT_FREQUENCY_START = 856.0e6
 DEFAULT_FREQUENCY_END = 1712.0e6
 
-# Dual-linear receptor labels, the default polarisation basis. Defined once
-# here so the builders' receptor_labels defaults cannot silently drift from
-# this factory's own default.
-DEFAULT_RECEPTOR_LABELS = ("X", "Y")
+# receptor_label is positional: pos_n names the n-th receptor of the antenna's
+# feed, not the receptor itself, so it reads the same for linear and circular
+# feeds. Which receptor sits at each position is recorded elsewhere; where a
+# type needs the receptors by name, as the columns of a Jones term, they go on
+# parameter_label instead. Defined once here so the builder's receptor_labels
+# default cannot silently drift from this factory's own default.
+DEFAULT_RECEPTOR_LABELS = ("pos_0", "pos_1")
 
 
 def _check_size(axis: str, size: int) -> None:
@@ -212,8 +215,8 @@ def receptor_label_coord(labels: Sequence[str] = DEFAULT_RECEPTOR_LABELS) -> xr.
     """Build a receptor label coordinate.
 
     Args:
-        labels: Receptor labels. The default is dual linear; pass ("R", "L")
-            for dual circular.
+        labels: Receptor labels. The default is two positional labels, pos_0
+            and pos_1, which index the feed's receptors without naming them.
 
     Returns:
         The receptor_label coordinate.

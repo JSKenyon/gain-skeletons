@@ -26,7 +26,7 @@ DIRECTION_INDEPENDENT_CASES = [
         "GAIN",
         "rel",
         "complex64",
-        ("gain_X", "gain_Y"),
+        ("X", "Y"),
         "full",
     ),
     # Standard electronic gain: complex, one solution per band, on-diagonal only.
@@ -104,7 +104,7 @@ DIRECTION_DEPENDENT_CASES = [
         "GAIN",
         "rel",
         "complex64",
-        ("gain_X", "gain_Y"),
+        ("X", "Y"),
         "full",
     ),
     # Ionospheric TEC: direction-dependent, but neither frequency- nor
@@ -204,9 +204,9 @@ def test_multi_parameter_entries_declare_no_parameter_axis(key):
 @pytest.mark.parametrize(
     ("key", "labels"),
     [
-        ("phenomenological_gain", ("gain_X", "gain_Y")),
+        ("phenomenological_gain", ("X", "Y")),
         ("antenna_positions", ("dX", "dY", "dZ")),
-        ("dd_phenomenological_gain", ("gain_X", "gain_Y")),
+        ("dd_phenomenological_gain", ("X", "Y")),
     ],
 )
 def test_parameter_axis_entries_are_single_quantity_components(key, labels):

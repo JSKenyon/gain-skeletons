@@ -114,6 +114,36 @@ def test_coord_kwargs_for_label_axis_is_rejected():
         make_gain_xds("antenna_gain", coord_kwargs={"receptor_label": {"labels": ("R", "L")}})
 
 
+def test_receptor_labels_default_to_positions():
+    assert list(make_gain_xds("antenna_gain").receptor_label.values) == ["pos_0", "pos_1"]
+
+
+# A phenomenological term's Jones rows are receptor positions and its columns
+# are receptors, so one element is addressed by one of each.
+def test_phenomenological_jones_is_positions_by_receptors():
+    xds = make_gain_xds("phenomenological_gain")
+    assert list(xds.receptor_label.values) == ["pos_0", "pos_1"]
+    assert list(xds.parameter_label.values) == ["X", "Y"]
+    element = xds.GAIN.sel(receptor_label="pos_0", parameter_label="Y")
+    assert element.dims == ("time", "antenna_name", "frequency")
+
+
+def test_parameter_labels_override_the_declared_labels():
+    xds = make_gain_xds("phenomenological_gain", parameter_labels=("R", "L"))
+    assert list(xds.parameter_label.values) == ["R", "L"]
+    assert xds.GAIN.sizes["parameter_label"] == 2
+
+
+def test_parameter_labels_for_type_without_parameter_axis_is_rejected():
+    with pytest.raises(ValueError, match="parameter_labels"):
+        make_gain_xds("bandpass", parameter_labels=("X", "Y"))
+
+
+def test_empty_parameter_labels_are_rejected():
+    with pytest.raises(ValueError, match="at least one label"):
+        make_gain_xds("antenna_positions", parameter_labels=())
+
+
 def test_invalid_flag_fraction_is_rejected():
     with pytest.raises(ValueError, match="flag_fraction"):
         make_gain_xds("antenna_gain", flag_fraction=2.0)

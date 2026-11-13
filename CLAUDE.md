@@ -2,31 +2,30 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commands
+## Tooling
 
-Every Python invocation goes through the project's `.venv`; never system Python, never
-`uv run`.
+Interact with this project using the `uv` tool.
+
 
 ```bash
-source .venv/bin/activate
 
 # Full suite.
-python -m pytest
+uv run --dev python -m pytest
 
 # Single test.
-python -m pytest tests/test_registry.py::test_fringe_fit_parameters_match_catalogue -v
+uv run --dev python -m pytest tests/test_registry.py::test_fringe_fit_parameters_match_catalogue -v
 
 # Lint and format.
-ruff check . && ruff format .
+uv run --dev ruff check . && ruff format .
 
 # Execute the notebook end to end (uses the "gain-skeletons" Jupyter kernel).
-jupyter nbconvert --to notebook --execute --inplace \
+uv run jupyter nbconvert --to notebook --execute --inplace \
   --ExecutePreprocessor.kernel_name=gain-skeletons \
   notebooks/gain_skeletons_demo.ipynb
 ```
 
 The suite passes clean under bare `-W error`, not just the default filters — use
-`python -m pytest -W error` when checking for stray warnings. `-W error::UserWarning`
+`uv run --dev python -m pytest -W error` when checking for stray warnings. `-W error::UserWarning`
 would miss a real regression: the zarr read-side warning (see below) is a
 `RuntimeWarning`.
 
@@ -109,6 +108,15 @@ them to agree. Note the direction: the rule is agreement, not uniqueness. Two pa
 sharing the axis must ask for identical labels; asking for different ones describes an axis
 that cannot exist. `CalSpec.parameter_labels` reports the agreed labels, or `None` when no
 parameter declares the axis.
+
+## `receptor_label` is positional
+
+`receptor_label` holds positions (`pos_0`, `pos_1`, …), never receptor names: it indexes
+the feed's receptors without saying which is which. Where a type needs receptors by name —
+the columns of a phenomenological Jones term — they go on `parameter_label` (`X`, `Y`), so
+one Jones element is one `receptor_label` × one `parameter_label`. `make_gain_xds` takes
+`receptor_labels` and `parameter_labels` overrides, the latter for a circular `("R", "L")`
+feed; it rejects `parameter_labels` for a type with no parameter axis.
 
 ## Scope
 
