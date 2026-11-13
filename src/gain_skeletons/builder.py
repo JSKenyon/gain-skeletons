@@ -160,6 +160,33 @@ def _build_coords(
     return coords
 
 
+def _resolve_parameter_labels(
+    spec: CalSpec, parameter_labels: Sequence[str] | None
+) -> tuple[str, ...]:
+    """Combine a specification's parameter labels with a caller override.
+
+    Args:
+        spec: The calibration type.
+        parameter_labels: Labels to use on the parameter axis instead of the
+            specification's, or None to keep them.
+
+    Returns:
+        The parameter axis labels, or an empty tuple if the type has no
+        parameter axis.
+
+    Raises:
+        ValueError: If labels are given for a type with no parameter axis.
+    """
+    if parameter_labels is None:
+        return spec.parameter_labels or ()
+    if spec.parameter_labels is None:
+        raise ValueError(
+            f"calibration type {spec.name!r} has no 'parameter_label' axis, so "
+            "parameter_labels cannot be set"
+        )
+    return tuple(parameter_labels)
+
+
 def _generate_values(
     param: ParamSpec,
     shape: tuple[int, ...],
@@ -280,6 +307,7 @@ def make_gain_xds(
     n_antenna: int | None = None,
     n_frequency: int | None = None,
     receptor_labels: Sequence[str] = DEFAULT_RECEPTOR_LABELS,
+    parameter_labels: Sequence[str] | None = None,
     coord_kwargs: Mapping[str, Mapping[str, Any]] | None = None,
     seed: int | None = 0,
     flag_fraction: float = DEFAULT_FLAG_FRACTION,
@@ -304,6 +332,10 @@ def make_gain_xds(
         n_antenna: Override the antenna extent.
         n_frequency: Override the frequency extent.
         receptor_labels: Receptor labels, for parameters with a receptor axis.
+            Positional (pos_0, pos_1) by default.
+        parameter_labels: Labels for the parameter axis, replacing those the
+            calibration type declares. None keeps the declared labels; pass
+            ("R", "L") to give a phenomenological term a circular feed.
         coord_kwargs: Axis name to extra keyword arguments for that axis's
             coordinate factory. Only ``time``, ``antenna_name``, and
             ``frequency`` accept extra keywords; direction_coord takes none,
@@ -320,7 +352,8 @@ def make_gain_xds(
     Raises:
         ValueError: If a size or coord_kwargs entry names an axis the type
             lacks, if coord_kwargs names an axis that takes no coordinate
-            configuration, or if flag_fraction is out of range.
+            configuration, if parameter_labels is given for a type with no
+            parameter axis, or if flag_fraction is out of range.
         KeyError: If spec is a name that is not registered.
     """
     spec = _resolve_spec(spec)
@@ -343,7 +376,7 @@ def make_gain_xds(
         spec,
         axes,
         sizes,
-        spec.parameter_labels or (),
+        _resolve_parameter_labels(spec, parameter_labels),
         receptor_labels,
         coord_kwargs or {},
     )

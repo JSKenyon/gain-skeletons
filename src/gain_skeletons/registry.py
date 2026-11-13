@@ -31,10 +31,12 @@ _TIME_ANT = ("time", "antenna_name")
 _GAIN_AXES = (*_TIME_ANT, "frequency", "receptor_label")
 _UNPOL_AXES = (*_TIME_ANT, "frequency")
 
-# The two columns of the Jones matrix, named for the receptor each column maps
-# from, are what a phenomenological term's two parameters per receptor are. The
-# naming is provisional; nothing outside this constant depends on the spelling.
-_JONES_LABELS = ("gain_X", "gain_Y")
+# A phenomenological term's Jones matrix is indexed by receptor position on
+# receptor_label (pos_0, pos_1) and by receptor on parameter_label: each column
+# is named for the receptor it maps from, so GAIN.sel(receptor_label="pos_0",
+# parameter_label="Y") is one element. Dual linear by default; a builder
+# override supplies ("R", "L") for a circular feed.
+_JONES_LABELS = ("X", "Y")
 
 
 def _gain_spec(
@@ -90,8 +92,9 @@ _PHENOMENOLOGICAL_GAIN = _gain_spec(
     labels=_JONES_LABELS,
     description=(
         "General Jones term, describing the response without attributing it to a "
-        "physical cause. Two complex gains per receptor, one per column of the "
-        "Jones matrix, so a parameter axis is required. Its frequency extent is "
+        "physical cause. Receptor positions index the Jones rows and receptors on "
+        "the parameter axis index its columns, so a parameter axis is required. "
+        "Its frequency extent is "
         "arbitrary, so it defaults to channel-resolved."
     ),
 )
@@ -207,8 +210,8 @@ _DD_PHENOMENOLOGICAL_GAIN = _gain_spec(
     labels=_JONES_LABELS,
     n_direction=N_DIRECTION,
     description=(
-        "Direction-dependent general Jones term. The same two gains per receptor "
-        "as phenomenological_gain, with a leading direction axis indexing facets "
+        "Direction-dependent general Jones term. The same Jones layout as "
+        "phenomenological_gain, with a leading direction axis indexing facets "
         "within a single field of view. Single-channel by default, since directions "
         "multiply the array size."
     ),

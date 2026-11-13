@@ -105,14 +105,17 @@ def test_direction_coord_is_an_integer_index():
     assert list(coord.values) == [0, 1, 2]
 
 
-def test_receptor_label_coord_defaults_to_dual_linear():
+# Receptor labels are positional: they index the feed's receptors without
+# naming them, so the default is the same for linear and circular feeds.
+def test_receptor_label_coord_defaults_to_two_positions():
     coord = receptor_label_coord()
     assert coord.dims == ("receptor_label",)
-    assert list(coord.values) == ["X", "Y"]
+    assert list(coord.values) == ["pos_0", "pos_1"]
 
 
-def test_receptor_label_coord_accepts_circular_labels():
-    assert list(receptor_label_coord(("R", "L")).values) == ["R", "L"]
+def test_receptor_label_coord_accepts_other_labels():
+    labels = ("pos_0", "pos_1", "pos_2")
+    assert list(receptor_label_coord(labels).values) == list(labels)
 
 
 def test_parameter_label_coord_preserves_label_order():

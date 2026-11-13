@@ -14,11 +14,13 @@ dependencies = [
     "zarr>=3",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest",
     "ruff",
 ]
+
+[project.optional-dependencies]
 notebook = [
     "ipykernel",
     "jupyter",
